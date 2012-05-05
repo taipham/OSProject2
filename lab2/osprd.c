@@ -65,8 +65,8 @@ typedef struct osprd_info {
 
 	/* HINT: You may want to add additional fields to help
 	         in detecting deadlock. */
-	int num_write; // number of write locks
-	int num_read; // number of read_locks
+	unsigned num_write; // number of write locks
+	unsigned num_read; // number of read_locks
 
 	// The following elements are used internally; you don't need
 	// to understand them.
@@ -191,15 +191,15 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 			return -1;
 		}
 
-		
-		if (filp->f_mode & F_OSPRD_LOCKED) // file holds a lock
+		//eprintk("Osprd_close_last\n");
+		if (filp->f_flags & F_OSPRD_LOCKED) // file holds a lock
 		{
-			filp->f_mode = filp->f_mode & ~F_OSPRD_LOCKED; // clear lock
-
-			osp_spin_lock(&d->mutex);	// lock data		
+			//eprintk("Osprd_close_last if\n");
+			osp_spin_lock(&d->mutex);	// lock data	
+			filp->f_mode &= ~F_OSPRD_LOCKED; // clear lock	
 			if (filp_writable)
 			{
-				d->num_write--;
+				d->num_write = 0;
 			}
 			else
 			{
@@ -207,6 +207,11 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 			}
 			osp_spin_unlock(&d->mutex);
 			wake_up_all(&d->blockq);
+		}
+		else
+		{
+			//eprintk("Osprd_close_last else\n");
+			return 0;
 		}
 		// This line avoids compiler warnings; you may remove it.
 		(void) filp_writable, (void) d;
@@ -230,7 +235,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 {
 	osprd_info_t *d = file2osprd(filp);	// device info
 	int r = 0;			// return value: initially 0
-
+	unsigned local_ticket = 0;
 	// is file open for writing?
 	int filp_writable = (filp->f_mode & FMODE_WRITE) != 0;
 
@@ -284,14 +289,43 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 
 		// TODO		
 		// Your code here (instead of the next two lines).
-		if (filp->writable)
-		{
-		}
-		else
-		{
-		}
 		eprintk("Attempting to acquire\n");
-		r = -ENOTTY;
+
+		local_ticket = d->ticket_head;
+		osp_spin_lock(&d->mutex);
+		d->ticket_head++;
+		osp_spin_unlock(&d->mutex);
+
+		//eprintk("Attempting to acquire: local_ticket = %d\n", local_ticket);
+		if (filp_writable) // write lock
+		{
+			//eprintk("Attempting to acquire: filp_writable\n");
+			//eprintk("write = %d, read = %d, tail = %d\n", d->num_write, d->num_read, d->ticket_tail);
+			int wait_sig = wait_event_interruptible(d->blockq, d->num_write == 0 && d->num_read == 0 && d->ticket_tail >= local_ticket); // wait
+			//eprintk("End waiting\n");
+			if (wait_sig == -ERESTARTSYS)
+				return -ERESTARTSYS;
+			osp_spin_lock(&d->mutex);
+			d->num_write++;
+			d->ticket_tail++;
+			filp->f_flags |= F_OSPRD_LOCKED;
+			osp_spin_unlock(&d->mutex);		
+		}
+		else // read lock
+		{
+			//eprintk("Attempting to acquire: filp_readable\n");
+			wait_event_interruptible(d->blockq, d->num_write == 0 && d->ticket_tail >= local_ticket); // wait
+
+			//eprintk("End waiting\n");
+			osp_spin_lock(&d->mutex);
+			d->num_read++;
+			d->ticket_tail++;
+			filp->f_flags |= F_OSPRD_LOCKED;
+			osp_spin_unlock(&d->mutex);		
+		}
+		//eprintk("Attempting to acquire\n");
+		//r = -ENOTTY;
+		r = 0;
 
 	} else if (cmd == OSPRDIOCTRYACQUIRE) {
 
@@ -306,7 +340,41 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 
 		// Your code here (instead of the next two lines).
 		eprintk("Attempting to try acquire\n");
-		r = -ENOTTY;
+		if (filp_writable)
+		{
+			osp_spin_lock(&d->mutex);
+			if (d->num_write == 0 && d->num_read == 0)
+			{
+				d->num_write++;
+			//d->ticket_tail++;
+				filp->f_flags |= F_OSPRD_LOCKED;
+				osp_spin_unlock(&d->mutex);
+				r = 0;
+			}
+			else // block
+			{
+				osp_spin_unlock(&d->mutex);
+				r = -EBUSY;
+			}
+		}
+		else
+		{
+			osp_spin_lock(&d->mutex);
+			if (d->num_write == 0)
+			{
+				d->num_read++;
+				filp->f_flags |= F_OSPRD_LOCKED;
+				osp_spin_unlock(&d->mutex);
+				r = 0;
+			}
+			else // block
+			{
+				osp_spin_unlock(&d->mutex);
+				r = -EBUSY;
+			}
+		}
+		//eprintk("Attempting to try acquire\n");
+		//r = -ENOTTY;
 
 	} else if (cmd == OSPRDIOCRELEASE) {
 
@@ -319,10 +387,23 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		
 		// TODO 
 		// Your code here (instead of the next line).
-		if ((filp->f_flags & F_OSPR_LOCKED) == 0) // file hasn't locked rdisk
+		eprintk("Attempting to unlock\n");
+		if ((filp->f_flags & F_OSPRD_LOCKED) == 0) // file hasn't locked rdisk
 			return -EINVAL;
+		else
+		{
+			osp_spin_lock(&d->mutex);
+			filp->f_flags &= ~F_OSPRD_LOCKED;
 
-		r = -ENOTTY;
+			if (filp_writable)
+				d->num_write = 0;
+			else
+				d->num_read--;
+			osp_spin_unlock(&d->mutex);
+			wake_up_all(&d->blockq);
+			r = 0;			
+		}
+		//r = -ENOTTY;
 
 	} else
 		r = -ENOTTY; /* unknown command */
@@ -339,6 +420,8 @@ static void osprd_setup(osprd_info_t *d)
 	osp_spin_lock_init(&d->mutex);
 	d->ticket_head = d->ticket_tail = 0;
 	/* Add code here if you add fields to osprd_info_t. */
+	d->num_write = 0;
+	d->num_read = 0;
 }
 
 
