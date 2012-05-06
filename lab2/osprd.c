@@ -70,6 +70,7 @@ typedef struct osprd_info {
 	pid_t write_pid; // pid of the process that writing, initialize = -1
 	pid_t read_pid[OSPRD_MAJOR]; // pid of processes hold read lock
 	
+	unsigned is_read; // for detecting deadlock
 	// The following elements are used internally; you don't need
 	// to understand them.
 	struct request_queue *queue;    // The device request queue.
