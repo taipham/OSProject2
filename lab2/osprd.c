@@ -67,7 +67,9 @@ typedef struct osprd_info {
 	         in detecting deadlock. */
 	unsigned num_write; // number of write locks
 	unsigned num_read; // number of read_locks
-
+	pid_t write_pid; // pid of the process that writing, initialize = -1
+	pid_t read_pid[OSPRD_MAJOR]; // pid of processes hold read lock
+	
 	// The following elements are used internally; you don't need
 	// to understand them.
 	struct request_queue *queue;    // The device request queue.
@@ -200,10 +202,28 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 			if (filp_writable)
 			{
 				d->num_write = 0;
+				d->write_pid = -1; // clear pid
 			}
 			else
 			{
 				d->num_read--;
+				int i;
+				i = 0;
+				while (d->read_pid[i] != -1 && i < OSPRD_MAJOR)
+				{
+					if (d->read_pid[i] == current->pid)
+					{
+						int j = i+1;
+						while (d->read_pid[j] != -1 && j < OSPRD_MAJOR)
+						{
+							d->read_pid[i] = d->read_pid[j];
+							i++;
+							j++;
+						}
+						break;
+					}
+					i++;
+				}
 			}
 			osp_spin_unlock(&d->mutex);
 			wake_up_all(&d->blockq);
@@ -289,18 +309,35 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 
 		// TODO		
 		// Your code here (instead of the next two lines).
-		eprintk("Attempting to acquire\n");
+		//eprintk("Attempting to acquire\n");
+		
+		// if process request lock while already holding write lock
+		// it's a deadlock
+		if (current->pid == d->write_pid)
+		{
+			return -EDEADLK;
+		}
+
+		// check if current process do not hold read lock
+		int i;
+		i = 0;
+		while (d->read_pid[i] != -1 && i < OSPRD_MAJOR)
+		{
+			if (d->read_pid[i] == current->pid)
+				return -EDEADLK;
+			else
+				i++;
+		}
 
 		local_ticket = d->ticket_head;
 		osp_spin_lock(&d->mutex);
 		d->ticket_head++;
 		osp_spin_unlock(&d->mutex);
+		
 
 		//eprintk("Attempting to acquire: local_ticket = %d\n", local_ticket);
 		if (filp_writable) // write lock
 		{
-			//eprintk("Attempting to acquire: filp_writable\n");
-			//eprintk("write = %d, read = %d, tail = %d\n", d->num_write, d->num_read, d->ticket_tail);
 			int wait_sig = wait_event_interruptible(d->blockq, d->num_write == 0 && d->num_read == 0 && d->ticket_tail >= local_ticket); // wait
 			//eprintk("End waiting\n");
 			if (wait_sig == -ERESTARTSYS)
@@ -308,6 +345,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			osp_spin_lock(&d->mutex);
 			d->num_write++;
 			d->ticket_tail++;
+			d->write_pid = current->pid;
 			filp->f_flags |= F_OSPRD_LOCKED;
 			osp_spin_unlock(&d->mutex);		
 		}
@@ -317,10 +355,17 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			wait_event_interruptible(d->blockq, d->num_write == 0 && d->ticket_tail >= local_ticket); // wait
 
 			//eprintk("End waiting\n");
+			int j;
+			j = 0;
 			osp_spin_lock(&d->mutex);
 			d->num_read++;
 			d->ticket_tail++;
 			filp->f_flags |= F_OSPRD_LOCKED;
+			while (d->read_pid[j] != -1 && j < OSPRD_MAJOR)
+			{
+				j++;
+			}
+			d->read_pid[j] = current->pid;
 			osp_spin_unlock(&d->mutex);		
 		}
 		//eprintk("Attempting to acquire\n");
@@ -339,7 +384,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// TODO
 
 		// Your code here (instead of the next two lines).
-		eprintk("Attempting to try acquire\n");
+		//eprintk("Attempting to try acquire\n");
 		if (filp_writable)
 		{
 			osp_spin_lock(&d->mutex);
@@ -387,7 +432,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		
 		// TODO 
 		// Your code here (instead of the next line).
-		eprintk("Attempting to unlock\n");
+		//eprintk("Attempting to unlock\n");
 		if ((filp->f_flags & F_OSPRD_LOCKED) == 0) // file hasn't locked rdisk
 			return -EINVAL;
 		else
@@ -396,9 +441,30 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			filp->f_flags &= ~F_OSPRD_LOCKED;
 
 			if (filp_writable)
+			{
 				d->num_write = 0;
+				d->write_pid = -1;
+			}
 			else
+			{
 				d->num_read--;
+				int i = 0;
+				while (d->read_pid[i] != -1 && i < OSPRD_MAJOR)
+				{
+					if (d->read_pid[i] == current->pid)
+					{
+						int j = i+1;
+						while (d->read_pid[j] != -1 && j < OSPRD_MAJOR)
+						{
+							d->read_pid[i] = d->read_pid[j];
+							i++;
+							j++;
+						}
+						break;
+					}
+					i++;
+				}
+			}
 			osp_spin_unlock(&d->mutex);
 			wake_up_all(&d->blockq);
 			r = 0;			
@@ -422,6 +488,13 @@ static void osprd_setup(osprd_info_t *d)
 	/* Add code here if you add fields to osprd_info_t. */
 	d->num_write = 0;
 	d->num_read = 0;
+	d->write_pid = -1;
+
+	int i;
+	for(i=0; i< OSPRD_MAJOR;i++)
+	{
+		d->read_pid[i] = -1;
+	}
 }
 
 
