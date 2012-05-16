@@ -627,6 +627,7 @@ static void
 free_block(uint32_t blockno)
 {
 	/* EXERCISE: Your code here */
+	// DONE ?
 	if (blockno == 0 || blockno == 1) // "reserve" block
 	{
 		eprintk("Reserved block should not be free\n");
@@ -682,12 +683,17 @@ free_block(uint32_t blockno)
 //	       block, -1 if it does not.
 //
 // EXERCISE: Fill in this function.
+// DONE ?
 
 static int32_t
 indir2_index(uint32_t b)
 {
 	// Your code here.
-	return -1;
+	// b requires doubly indirect if b index is bigger than number of indirect blocks
+	if (b >= (OSPFS_NDIRECT + OSPFS_NINDIRECT))
+		return 0;
+	else 
+		return -1;
 }
 
 
@@ -701,12 +707,19 @@ indir2_index(uint32_t b)
 //		the doubly indirect block.
 //
 // EXERCISE: Fill in this function.
+// DONE
 
 static int32_t
 indir_index(uint32_t b)
 {
 	// Your code here.
-	return -1;
+	if (b < OSPFS_NDIRECT)
+		return -1;
+	else if ( b >= OSPFS_NDIRECT && b < (OSPFS_NDIRECT + OSPFS_NINDIRECT))
+		return 0;
+	else
+		return ((b - (OSPFS_NDIRECT + OSPFS_NINDIRECT)) / OSPFS_NINDIRECT);	
+	//return -1;
 }
 
 
@@ -718,12 +731,20 @@ indir_index(uint32_t b)
 //	    block array.
 //
 // EXERCISE: Fill in this function.
+// DONE ?
 
 static int32_t
 direct_index(uint32_t b)
 {
 	// Your code here.
-	return -1;
+	if (b >= 0 && b < OSPFS_NDIRECT) // b is in direct block
+		return b;
+	else if ( b >= OSPFS_NDIRECT && b < (OSPFS_NDIRECT + OSPFS_NINDIRECT)) // 1st indirect block
+		return (b - OSPFS_NDIRECT);
+	else if (b >= (OSPFS_NDIRECT + OSPFS_NINDIRECT)) // indirect of indirect blocks
+		return ((b - (OSPFS_NDIRECT + OSPFS_NINDIRECT)) % OSPFS_NINDIRECT);
+	else // undefined
+		return -1;
 }
 
 
