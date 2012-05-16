@@ -9,14 +9,14 @@
 # the end of the file.
 
 # Partner 1
-Name: Your Name Here
-Student ID: Your ID Here
-Email: Your Email Here
+Name: Tai Pham
+Student ID: 603897752
+Email: taiducpham@ucla.edu
 
 # Partner 2
-#Name: Partner's Name Here
-#Student ID: Partner's ID Here
-#Email: Partner's Email Here
+Name: Daifu Ye
+Student ID: 403910231
+Email: daifu.ye@gmail.com
 
 
 # Add any other information you'd like us to have below this line.
