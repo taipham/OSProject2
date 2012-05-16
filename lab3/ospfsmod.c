@@ -452,7 +452,8 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 * the loop.  For now we do this all the time.
 		 *
 		 * EXERCISE: Your code here */
-		if ((f_pos-2) * DIRENTRY_SIZE >= dir_oi->oi_size)
+		// DONE
+		if ((f_pos-2) * OSPFS_DIRENTRY_SIZE >= dir_oi->oi_size)
 		{
 			r = 1;		/* Fix me! */
 			break;		/* Fix me! */
@@ -479,6 +480,39 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 */
 
 		/* EXERCISE: Your code here */
+		od = ospfs_inode_data(dir_oi, (f_pos-2) * OSPFS_DIRENTRY_SIZE);
+		if (od->od_ino != 0) // not blank entry
+		{
+			entry_oi = ospfs_inode(od->od_ino); // get the inode corresspondent directory entry
+		}
+		else // ignore if blank
+		{
+			f_pos++;
+			continue;
+		}
+	
+		// check type
+		uint32_t type = -1;
+		if (entry_oi->oi_ftype == OSPFS_FTYPE_REG)
+		{
+			type = DT_REG;
+		}
+		else if (entry_oi->oi_ftype == OSPFS_FTYPE_DIR)
+		{
+			type = DT_DIR;
+		}
+		else if (entry_oi->oi_ftype == OSPFS_FTYPE_SYMLINK)
+		{
+			type = DT_LNK;
+		}
+		else
+		{
+			panic("OSPFS: unknown inode type!");
+			return -100;
+		}
+		ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, type);
+		if (ok_so_far >= 0)
+			f_pos++;				
 	}
 
 	// Save the file position and return!
