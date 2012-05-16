@@ -480,13 +480,16 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 */
 
 		/* EXERCISE: Your code here */
+		// DONE ?
 		od = ospfs_inode_data(dir_oi, (f_pos-2) * OSPFS_DIRENTRY_SIZE);
 		if (od->od_ino != 0) // not blank entry
 		{
+			eprintk("not blank\n");
 			entry_oi = ospfs_inode(od->od_ino); // get the inode corresspondent directory entry
 		}
 		else // ignore if blank
 		{
+			eprintk("blank\n");
 			f_pos++;
 			continue;
 		}
@@ -532,7 +535,7 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 //   Returns: 0 if success and -ENOENT on entry not found.
 //
 //   EXERCISE: Make sure that deleting symbolic links works correctly.
-
+//	 ???
 static int
 ospfs_unlink(struct inode *dirino, struct dentry *dentry)
 {
@@ -590,6 +593,21 @@ static uint32_t
 allocate_block(void)
 {
 	/* EXERCISE: Your code here */
+	// DONE ?
+	uint32_t num_block = ospfs_super->os_nblocks;
+	void* bitmap = ospfs_block(OSPFS_FREEMAP_BLK);
+	uint32_t i;
+	// ignore block 0, 1 and 2
+	for (i = 3; i < num_block; i++)
+	{
+		if (bitvector_test(bitmap, i) == 1) // free
+		{
+			bitvector_clear(bitmap,i); // set bit to 0
+			return i;
+		}
+	}
+	
+	// full
 	return 0;
 }
 
@@ -609,6 +627,30 @@ static void
 free_block(uint32_t blockno)
 {
 	/* EXERCISE: Your code here */
+	if (blockno == 0 || blockno == 1) // "reserve" block
+	{
+		eprintk("Reserved block should not be free\n");
+		return;
+	}
+	else if (blockno >= ospfs_super->os_nblocks)
+	{
+		eprintk("Block number too large\n");
+		return;
+	}
+	else
+	{
+		if (blockno < (ospfs_super->os_firstinob + ospfs_super->os_ninodes/OSPFS_BLKINODES))
+		{
+			eprintk("Block number in an inode area\n");
+			return;
+		}
+		else //ok
+		{
+			void* bitmap = ospfs_block(OSPFS_FREEMAP_BLK);
+			bitvector_set(bitmap, blockno);
+		}
+	}
+	
 }
 
 
