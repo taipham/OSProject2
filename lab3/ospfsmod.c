@@ -885,7 +885,47 @@ remove_block(ospfs_inode_t *oi)
 	uint32_t n = ospfs_size2nblocks(oi->oi_size);
 
 	/* EXERCISE: Your code here */
-	return -EIO; // Replace this line
+    //
+    // initialize the direct_index, indir_index, indir2_index
+    //
+    int32_t di = direct_index(n);
+    int32_t inidx = indir_index(n);
+    int32_t in2idx = indir2_index(n);
+
+    // To do:
+    // check if nothing to de-allocate
+    if (n == 0) {
+        return -EIO;
+    }
+
+    // if it is direct link
+    //
+    if (inidx == -1 && in2idx == -1) {
+        // Check the block is there or not
+        if (oi->oi_direct[di] == 0) {
+            return -EIO;
+        }
+
+        // free the block
+        free_block(oi->oi_direct[di]);
+
+        // set the pointer to 0
+        oi->oi_direct[di] = 0;
+
+        // success
+        if (oi->oi_size > OSPFS_BLKSIZE) {
+            oi->oi_size -= OSPFS_BLKSIZE;
+        } else {
+            oi->oi_size -= oi->oi_size;
+        }
+        return 0;
+    }
+    // if it is a single link
+    //
+    // if it is doubly link
+    //
+
+	return 0; // Replace this line
 }
 
 
