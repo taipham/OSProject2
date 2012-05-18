@@ -1229,7 +1229,7 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 
 	while ( entry < dir_oi->oi_size)
 	{
-		ret = ospfs_inode_data(dir_oi, offset);
+		ret = ospfs_inode_data(dir_oi, entry);
 		if (ret->od_ino == 0) // empty directory
 		{
 			return ret;
@@ -1246,7 +1246,7 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	// get the new directory
 	ret = ospfs_inode_data(dir_oi, entry);
 	ret->od_ino = 0;
-	ret->od_name = '\0';
+	ret->od_name[0] = '\0';
 	return ret; // Replace this line
 }
 
@@ -1322,6 +1322,10 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	uint32_t entry_ino = 0;
 	/* EXERCISE: Your code here. */
 	// check for -EEXIST error
+	ospfs_direntry_t* entry;
+	entry = find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len);
+	if (entry != NULL)
+		return -EEXIST;
 	
 	return -EINVAL; // Replace this line
 
