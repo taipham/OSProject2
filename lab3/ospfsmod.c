@@ -1321,12 +1321,18 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
 	/* EXERCISE: Your code here. */
+	
+	// check ENAMETOOLONG error
+	if (dentry->d_name.len > OSPFS_MAXNAMELEN)
+		return -ENAMETOOLONG;
 	// check for -EEXIST error
 	ospfs_direntry_t* entry;
 	entry = find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len);
 	if (entry != NULL)
 		return -EEXIST;
 	
+	// find empty directory
+	entry = create_blank_entry(dir_oi);
 	return -EINVAL; // Replace this line
 
 	/* Execute this code after your function has successfully created the
