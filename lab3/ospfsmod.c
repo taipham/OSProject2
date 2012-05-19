@@ -888,7 +888,116 @@ remove_block(ospfs_inode_t *oi)
 	uint32_t n = ospfs_size2nblocks(oi->oi_size);
 
 	/* EXERCISE: Your code here */
-	return -EIO; // Replace this line
+    //
+    // initialize the direct_index, indir_index, indir2_index
+    //
+    int32_t di = direct_index(n);
+    int32_t inidx = indir_index(n);
+    int32_t in2idx = indir2_index(n);
+
+    // block pointers
+    uint32_t *block, *block2;
+
+    // check if nothing to de-allocate
+    if (n == 0) {
+        return -EIO;
+    }
+
+    // if it is direct link
+    //
+    if (inidx == -1 && in2idx == -1) {
+        // Check the block is there or not
+        if (oi->oi_direct[di] == 0) {
+            return -EIO;
+        }
+
+        // free the block
+        free_block(oi->oi_direct[di]);
+
+        // set the pointer to 0
+        oi->oi_direct[di] = 0;
+
+        // success
+        oi->oi_size = ( n - 1 ) * OSPFS_BLKSIZE;
+        return 0;
+    }
+    // if it is a single link
+    //
+    if (in2idx == -1) {
+        // Check the block is there or not
+        if (oi->oi_indirect == 0) {
+            return -EIO;
+        }
+
+        // get the indirect block
+        block = ospfs_block(oi->oi_indirect);
+
+        // check error
+        if (block[di] == 0) {
+            return -EIO;
+        }
+
+        // free block
+        free_block(block[di]);
+
+        // reset the pointer
+        block[di] = 0;
+
+        if (di == 0) {
+            // free block
+            free_block(oi->oi_direct);
+            // reset pointer to NULL
+            oi->oi_indirect = 0;
+        }
+
+        // success
+        oi->oi_size = ( n -1 ) * OSPFS_BLKSIZE;
+        return 0;
+
+    }
+    // if it is doubly link
+    //
+    if(in2idx == 0) {
+        // check the error
+        if (oi->oi_indirect2 == 0) {
+            return -EIO;
+        }
+
+        // get the indir block
+        block2 = ospfs_block(oi->oi_indirect2);
+
+        // check the error
+        if (block2[inidx] == 0) {
+            return -EIO;
+        }
+
+        // free the block
+        free_block(block2[inidx]);
+
+        // reset the pointer to NULL
+        block2[inidx] = 0;
+        
+        if (inidx == 0) {
+            // free block
+            free_block(block[di]);
+
+            // reset the pointer to NULL
+            block[di] = 0;
+
+            if (di == 0) {
+                // free
+                free_block(oi->oi_indirect2);
+                // reset the pointer
+                oi->oi_indirect2 = 0;
+            }
+        }
+
+        // if it is success
+        oi->oi_size = ( n -1 ) * OSPFS_BLKSIZE;
+        return 0;
+    }
+
+    return 0;
 }
 
 
@@ -1110,14 +1219,38 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 	ospfs_inode_t *oi = ospfs_inode(filp->f_dentry->d_inode->i_ino);
 	int retval = 0;
 	size_t amount = 0;
+    int grow = 0;
 
 	// Support files opened with the O_APPEND flag.  To detect O_APPEND,
 	// use struct file's f_flags field and the O_APPEND bit.
 	/* EXERCISE: Your code here */
+    int is_append = (filp->f_flags & O_APPEND);
+    eprintk("is_append: %d\n", is_append);
+    eprintk("filp->f_flags: %x\n", filp->f_flags);
+    eprintk("O_APPEND: %x\n", O_APPEND);
+    if (is_append) {
+        *f_pos = oi->oi_size;
+    }
 
 	// If the user is writing past the end of the file, change the file's
 	// size to accomodate the request.  (Use change_size().)
 	/* EXERCISE: Your code here */
+    eprintk("is oversize: %d\n", (*f_pos + count) > oi->oi_size);
+    if ((*f_pos + count) > oi->oi_size) {
+        eprintk("Go into here!!!!\n");
+        retval = change_size(oi, *f_pos + count);
+
+        if (retval < 0) {
+            // increase to max as possible
+            while(grow == 0) {
+                // add block
+                grow = add_block(oi);
+            }
+
+            // change the size
+            oi->oi_size = ospfs_size2nblocks(oi->oi_size) * OSPFS_BLKSIZE;
+        }
+    }
 
 	// Copy data block by block
 	while (amount < count && retval >= 0) {
