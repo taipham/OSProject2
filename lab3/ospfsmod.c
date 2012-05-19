@@ -1465,8 +1465,37 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 		return -EEXIST;
 	
 	// find empty directory
-	entry = create_blank_entry(dir_oi);
-	return -EINVAL; // Replace this line
+	entry = create_blank_direntry(dir_oi);
+	if (IS_ERR(entry))
+		return -EIO;
+
+	// find an empty node
+	ospfs_inode_t* curr;
+	for(; entry_ino < ospfs_super->os_ninodes; entry_ino++)
+	{
+		curr = ospfs_inode(entry_ino);
+		if (curr->oi_nlink <= 0) // empty
+			break;
+	}
+
+	if (entry_ino >= ospfs_super->os_ninodes)
+		return -ENOSPC;
+
+	// Initialize the directory entry and inode.
+	// update dentry
+	entry->od_ino = entry_ino;
+	strncpy(entry->od_name, dentry->d_name.name, dentry->d_name.len);
+	
+	// update inode
+	curr->oi_size = 0;
+	curr->oi_ftype = OSPFS_FTYPE_REG;
+	curr->oi_nlink++;
+	curr->oi_mode = mode;
+	memset(curr->oi_direct, 0, sizeof(curr->oi_direct[0])*OSPFS_NDIRECT);
+	curr->oi_indirect = 0;
+	curr->oi_indirect2 = 0;
+	
+	//return -EINVAL; // Replace this line
 
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
