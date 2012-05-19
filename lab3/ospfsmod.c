@@ -1218,6 +1218,8 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 	eprintk("ospfs_write()\n");
 	ospfs_inode_t *oi = ospfs_inode(filp->f_dentry->d_inode->i_ino);
 	int retval = 0;
+    size_t block_offset;
+    char *block_buffer;
 	size_t amount = 0;
     int grow = 0;
 
@@ -1225,9 +1227,6 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 	// use struct file's f_flags field and the O_APPEND bit.
 	/* EXERCISE: Your code here */
     int is_append = (filp->f_flags & O_APPEND);
-    eprintk("is_append: %d\n", is_append);
-    eprintk("filp->f_flags: %x\n", filp->f_flags);
-    eprintk("O_APPEND: %x\n", O_APPEND);
     if (is_append) {
         *f_pos = oi->oi_size;
     }
@@ -1235,9 +1234,7 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 	// If the user is writing past the end of the file, change the file's
 	// size to accomodate the request.  (Use change_size().)
 	/* EXERCISE: Your code here */
-    eprintk("is oversize: %d\n", (*f_pos + count) > oi->oi_size);
     if ((*f_pos + count) > oi->oi_size) {
-        eprintk("Go into here!!!!\n");
         retval = change_size(oi, *f_pos + count);
 
         if (retval < 0) {
@@ -1270,10 +1267,28 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 		// read user space.
 		// Keep track of the number of bytes moved in 'n'.
 		/* EXERCISE: Your code here */
-		
-		
-		retval = -EIO; // Replace these lines
-		goto done;
+        block_buffer = ospfs_block(blockno);
+        //update block offset
+        block_offset = *f_pos % OSPFS_BLKSIZE;
+        // set the right block buffer
+        block_buffer += block_offset;
+
+        // calculate the amout
+        if ((count - amount) > (OSPFS_BLKSIZE - block_offset)) {
+            n = OSPFS_BLKSIZE - block_offset;
+        } else {
+            n = count - amount;
+        }
+
+        // sanity check
+        if ((*f_pos + n) > oi->oi_size) {
+            n = oi->oi_size - *f_pos;
+        }
+
+		if (copy_from_user(block_buffer, buffer, n)) {
+            retval = -EIO; // Replace these lines
+            goto done;
+		}
 
 		buffer += n;
 		amount += n;
