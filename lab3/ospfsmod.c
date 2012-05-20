@@ -1684,8 +1684,40 @@ ospfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 	ospfs_symlink_inode_t *oi =
 		(ospfs_symlink_inode_t *) ospfs_inode(dentry->d_inode->i_ino);
 	// Exercise: Your code here.
+	int q, c;
+	int j = 0;
+	int i = 0;
+	q = find_first_index(oi->oi_symlink, '?');
+	c = find_first_index(oi->oi_symlink, '?');
+	char temp[OSPFS_MAXSYMLINKLEN + 1]; // destination
 
-	nd_set_link(nd, oi->oi_symlink);
+	if (q != -1 && c != -1) // conditional symlink
+	{
+		if (current->uid == 0) // root
+		{
+			for (i = q + 1; i < c; i++)
+			{
+				temp[j] = oi->oi_symlink[i];
+				j++;
+			}
+			temp[j] = '\0';
+			nd_set_link(nd, dest);
+		}
+		else // not root
+		{
+			for(i = c+1; oi->oi_symlink[i] != '\0'; i++)
+			{
+				temp[j] = oi->oi_symlink[i];
+				j++;
+			}
+			temp[j] = '\0';
+			nd_set_link(nd, dest);
+		}
+	}
+	else
+	{
+		nd_set_link(nd, oi->oi_symlink);
+	}
 	return (void *) 0;
 }
 
