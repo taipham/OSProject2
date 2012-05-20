@@ -1684,11 +1684,32 @@ ospfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 	ospfs_symlink_inode_t *oi =
 		(ospfs_symlink_inode_t *) ospfs_inode(dentry->d_inode->i_ino);
 	// Exercise: Your code here.
-	int q, c;
+	int q=-1, c = -1;
 	int j = 0;
 	int i = 0;
-	q = find_first_index(oi->oi_symlink, '?');
-	c = find_first_index(oi->oi_symlink, '?');
+	int m = 0;
+	
+	// find index
+	while(oi->oi_symlink[m] != '\0')
+	{
+		if(oi->oi_symlink[m] == '?')
+		{
+			q = m;
+			break;
+		}
+		m++;
+	}
+	while(oi->oi_symlink[m] != '\0')
+	{
+		if(oi->oi_symlink[m] == ':')
+		{
+			c = m;
+			break;
+		}
+		m++;
+	}
+	//q = find_first_index(oi->oi_symlink, '?');
+	//c = find_first_index(oi->oi_symlink, '?');
 	char temp[OSPFS_MAXSYMLINKLEN + 1]; // destination
 
 	if (q != -1 && c != -1) // conditional symlink
@@ -1701,7 +1722,7 @@ ospfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 				j++;
 			}
 			temp[j] = '\0';
-			nd_set_link(nd, dest);
+			nd_set_link(nd, temp);
 		}
 		else // not root
 		{
@@ -1711,7 +1732,7 @@ ospfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 				j++;
 			}
 			temp[j] = '\0';
-			nd_set_link(nd, dest);
+			nd_set_link(nd, temp);
 		}
 	}
 	else
