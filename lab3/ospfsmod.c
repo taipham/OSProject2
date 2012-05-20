@@ -604,7 +604,7 @@ allocate_block(void)
 	void* bitmap = ospfs_block(OSPFS_FREEMAP_BLK);
 	uint32_t i;
 	// ignore block 0, 1 and 2
-	for (i = 3; i < num_block; i++)
+	for (i = 0; i < num_block; i++)
 	{
 		if (bitvector_test(bitmap, i) == 1) // free
 		{
@@ -957,7 +957,7 @@ remove_block(ospfs_inode_t *oi)
         block[di] = 0;
 				
 				
-        if (di == 0) {
+        if (n-2 < OSPFS_NDIRECT) {
             // free block
             free_block(oi->oi_direct);
             // reset pointer to NULL
@@ -994,22 +994,19 @@ remove_block(ospfs_inode_t *oi)
         // reset the pointer to NULL
         block[di] = 0;
         
-        if (inidx == 0) {
+        if (indir_index(n-2) < inidx) {
             // free block
-            free_block(block[di]);
+            free_block(block2[inidx]);
 
             // reset the pointer to NULL
-            block[di] = 0;
-
-						
-            if (di == 0) {
-                // free
-                free_block(oi->oi_indirect2);
-                // reset the pointer
-                oi->oi_indirect2 = 0;
-            }
-						
-        }
+            block2[inidx] = 0;
+				}
+				if (indir2_index(n-2) < 0)
+				{
+					free_block(oi->oi_indirect2);
+					oi->oi_indirect2 = 0;
+				}		
+        
 
         // if it is success
         oi->oi_size = ( n -1 ) * OSPFS_BLKSIZE;
@@ -1458,7 +1455,26 @@ static int
 ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dentry) {
 	eprintk("ospfs_link()\n");	
 	/* EXERCISE: Your code here. */
-	return -EINVAL;
+	ospfs_inode_t* dir_oi = ospfs_inode(dir->i_ino);
+	ospfs_inode_t* src_oi = ospfs_inode(src_dentry->d_inode->i_ino);
+	ospfs_direntry_t* dst_dir;
+	if (dst_dentry->d_name.len > OSPFS_MAXNAMELEN)
+		return -ENAMETOOLONG;
+	if (find_direntry(dir_oi, dst_dentry->d_name.name, dst_dentry->d_name.len) != 0)
+		return -EEXIST;
+
+	// create new directory
+	dst_dir = create_blank_direntry(dir_oi);
+	if(IS_ERR(dst_dir))
+		return -EIO;
+	
+	// update data
+	dst_dir->od_ino = src_dentry->d_inode->i_ino;
+	memcpy(dst_dir->od_name, dst_dentry->d_name.name, dst_dentry->d_name.len);
+	dst_dir->od_name[dst_dentry->d_name.len] = 0;
+
+	src_oi->oi_nlink++;
+	return 0;
 }
 
 // ospfs_create
@@ -1532,7 +1548,7 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	// Initialize the directory entry and inode.
 	// update dentry
 	entry->od_ino = entry_ino;
-	strncpy(entry->od_name, dentry->d_name.name, dentry->d_name.len);
+	memcpy(entry->od_name, dentry->d_name.name, dentry->d_name.len);
 	
 	// update inode
 	curr->oi_size = 0;
