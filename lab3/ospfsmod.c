@@ -1376,6 +1376,7 @@ find_direntry(ospfs_inode_t *dir_oi, const char *name, int namelen)
 //	The create_blank_direntry function should use this convention.
 //
 // EXERCISE: Write this function.
+// done
 
 static ospfs_direntry_t *
 create_blank_direntry(ospfs_inode_t *dir_oi)
@@ -1450,6 +1451,7 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 //               -EIO          on I/O error.
 //
 //   EXERCISE: Complete this function.
+// DONE
 
 static int
 ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dentry) {
@@ -1605,8 +1607,50 @@ ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 	uint32_t entry_ino = 0;
 
 	/* EXERCISE: Your code here. */
-	return -EINVAL;
+	// check ENAMETOOLONG error
+	if (dentry->d_name.len > OSPFS_MAXNAMELEN)
+		return -ENAMETOOLONG;
+	// check for -EEXIST error
+	ospfs_direntry_t* entry;
+	entry = find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len);
+	if (entry != NULL)
+	{
+		eprintk("EEXIST error\n");
+		return -EEXIST;
+	}
+	//return -EINVAL;
+	// find empty directory
+	entry = create_blank_direntry(dir_oi);
+	if (IS_ERR(entry))
+	{
+		eprintk("error\n");
+		return -EIO;
+	}
+	// find an empty node
+	ospfs_inode_t* curr;
+	for(; entry_ino < ospfs_super->os_ninodes; entry_ino++)
+	{
+		curr = ospfs_inode(entry_ino);
+		if (curr->oi_nlink == 0) // empty
+			break;
+	}
 
+	if (entry_ino >= ospfs_super->os_ninodes)
+		return -ENOSPC;
+
+	// Initialize the directory entry and inode.
+	// update dentry
+	entry->od_ino = entry_ino;
+	memcpy(entry->od_name, dentry->d_name.name, dentry->d_name.len);
+	
+	// update inode
+	// convert to symlink
+	ospfs_symlink_inode_t* sym_link = (ospfs_symlink_inode_t*) curr;
+	uint32_t name_size = strlen(symname);
+	sym_link->oi_size = name_size;
+	strncpy(sym_link->oi_symlink, symname, name_size);
+	sym_link->oi_ftype = OSPFS_FTYPE_SYMLINK;
+	sym_link->oi_nlink++;
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
 	   getting here. */
