@@ -788,17 +788,17 @@ direct_index(uint32_t b)
 static int
 add_block(ospfs_inode_t *oi)
 {
-	eprintk("add_block()\n");
+	//eprintk("add_block()\n");
 	// current number of blocks in file
 	uint32_t n = ospfs_size2nblocks(oi->oi_size);
 
 	// keep track of allocations to free in case of -ENOSPC
-	uint32_t *allocated[2] = { 0, 0 };
+	uint32_t allocated[2] = { 0, 0 };
 
 	uint32_t new_block;
 	uint32_t* ind_blk;
 	uint32_t* ind2_blk;
-	int32_t di = direct_index(n);
+	//int32_t di = direct_index(n);
   int32_t inidx = indir_index(n);
   int32_t in2idx = indir2_index(n);
 	/* EXERCISE: Your code here */
@@ -849,21 +849,21 @@ add_block(ospfs_inode_t *oi)
 	//if (n < OSPFS_NDIRECT)
 	if(inidx == -1 && in2idx == -1)
 	{
-		eprintk("direct\n");
+		//eprintk("direct\n");
 		memset(ospfs_block(new_block), 0, OSPFS_BLKSIZE);
 		oi->oi_direct[n] = new_block;
 	}
 	//else if (n >= OSPFS_NDIRECT && n <(OSPFS_NDIRECT + OSPFS_NINDIRECT))
 	else if (in2idx == -1)
 	{
-		eprintk("indirect\n");
+		//eprintk("indirect\n");
 		memset(ospfs_block(new_block), 0, OSPFS_BLKSIZE);
 		ind_blk = (uint32_t*)ospfs_block(oi->oi_indirect);
 		ind_blk[direct_index(n)] = new_block;
 	}
 	else
 	{
-		eprintk("indirect^2\n");
+		//eprintk("indirect^2\n");
 		ind2_blk = (uint32_t*)ospfs_block(oi->oi_indirect2);
 		ind_blk = (uint32_t*)ospfs_block(ind2_blk[indir_index(n)]);
 		ind_blk[direct_index(n)] = new_block;
@@ -898,7 +898,7 @@ add_block(ospfs_inode_t *oi)
 static int
 remove_block(ospfs_inode_t *oi)
 {
-	eprintk("remove_block()\n");
+	//eprintk("remove_block()\n");
 	// current number of blocks in file
 	uint32_t n = ospfs_size2nblocks(oi->oi_size);
 
@@ -934,32 +934,20 @@ remove_block(ospfs_inode_t *oi)
     // if it is a single link
     //
     else if (in2idx == -1) {
-		eprintk("indirect\n");
-        // Check the block is there or not
-				/*
-        if (oi->oi_indirect == 0) {
-            return -EIO;
-        }
-				*/
+		//eprintk("indirect\n");
         // get the indirect block
         block = ospfs_block(oi->oi_indirect);
 
-        // check error
-				/*
-        if (block[di] == 0) {
-            return -EIO;
-        }
-				*/
         // free block
         free_block(block[di]);
 
         // reset the pointer
-        block[di] = 0;
+        block[n-1 - OSPFS_NDIRECT] = 0;
 				
 				
         if (n-2 < OSPFS_NDIRECT) {
             // free block
-            free_block(oi->oi_direct);
+            free_block(oi->oi_indirect);
             // reset pointer to NULL
             oi->oi_indirect = 0;
         }
@@ -972,7 +960,7 @@ remove_block(ospfs_inode_t *oi)
     // if it is doubly link
     //
     else if(in2idx == 0) {
-		eprintk("indirect^2\n");
+		//eprintk("indirect^2\n");
         // check the error
 				/*
         if (oi->oi_indirect2 == 0) {
@@ -1058,8 +1046,8 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
 {
 	//eprintk("chang_size()\n");
 	uint32_t old_size = oi->oi_size;
-	int r = 0;
-	int flag;
+	//int r = 0;
+	int flag = 0;
 
 	while (ospfs_size2nblocks(oi->oi_size) < ospfs_size2nblocks(new_size)) 
 	{
@@ -1075,6 +1063,8 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
 				if (flag < 0)
 					return -EIO;
 			}
+			new_size = old_size;
+			oi->oi_size = new_size;
 			return -ENOSPC; 			
 		}
 		else if (flag < 0) // other error
@@ -1154,7 +1144,7 @@ ospfs_notify_change(struct dentry *dentry, struct iattr *attr)
 static ssize_t
 ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 {
-	eprintk("ospfs_read()\n");
+	//eprintk("ospfs_read()\n");
 	ospfs_inode_t *oi = ospfs_inode(filp->f_dentry->d_inode->i_ino);
 	int retval = 0;
 	size_t amount = 0;
@@ -1231,7 +1221,7 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 static ssize_t
 ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *f_pos)
 {
-	eprintk("ospfs_write()\n");
+	//eprintk("ospfs_write()\n");
 	ospfs_inode_t *oi = ospfs_inode(filp->f_dentry->d_inode->i_ino);
 	int retval = 0;
   uint32_t block_offset;
@@ -1455,7 +1445,7 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 
 static int
 ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dentry) {
-	eprintk("ospfs_link()\n");	
+	//eprintk("ospfs_link()\n");	
 	/* EXERCISE: Your code here. */
 	ospfs_inode_t* dir_oi = ospfs_inode(dir->i_ino);
 	ospfs_inode_t* src_oi = ospfs_inode(src_dentry->d_inode->i_ino);
@@ -1511,7 +1501,7 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 static int
 ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidata *nd)
 {
-	eprintk("ospfs_create(): %s\n", dentry->d_name.name);
+	//eprintk("ospfs_create(): %s\n", dentry->d_name.name);
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
 	/* EXERCISE: Your code here. */
@@ -1571,7 +1561,7 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 		if (!i)
 			return -ENOMEM;
 		d_instantiate(dentry, i);
-		eprintk("ospfs_create(): %s successful\n", dentry->d_name.name);
+		//eprintk("ospfs_create(): %s successful\n", dentry->d_name.name);
 		return 0;
 	}
 }
@@ -1602,7 +1592,7 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 static int
 ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 {
-	eprintk("ospfs_symlink()\n");
+	//eprintk("ospfs_symlink()\n");
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
 
@@ -1680,7 +1670,7 @@ ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 static void *
 ospfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
-	eprintk("ospfs_follow_link()\n");
+	//eprintk("ospfs_follow_link()\n");
 	ospfs_symlink_inode_t *oi =
 		(ospfs_symlink_inode_t *) ospfs_inode(dentry->d_inode->i_ino);
 	// Exercise: Your code here.
