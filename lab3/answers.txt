@@ -11,14 +11,14 @@
 # information you'd like us to know, please add it at the end of the file.
 
 # Partner 1
-Name: 
-Student ID: 
-Email: 
+Name: Tai Pham	
+Student ID: 603897752
+Email: taiducpham@ucla.edu
 
 # Partner 2 (if you're working in a team)
-Name: 
-Student ID: 
-Email: 
+Name: Daifu Ye
+Student ID: 403910231
+Email: daifu.ye@gmail.com
 
 # Extra credit problems
 #Extra credit problem: none

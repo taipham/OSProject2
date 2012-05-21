@@ -566,6 +566,14 @@ ospfs_unlink(struct inode *dirino, struct dentry *dentry)
 	}
 
 	od->od_ino = 0;
+
+	// symbolic link
+	int i;
+	for (i = 0; i < dentry->d_name.len; i++)
+	{
+		od->od_name[i] = '\0';
+	}
+
 	oi->oi_nlink--;
 	return 0;
 }
