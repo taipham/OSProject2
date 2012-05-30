@@ -445,7 +445,8 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 	}
 
 	// actual entries
-	while (r == 0 && ok_so_far >= 0 && f_pos >= 2) {
+	uint32_t tmp_pos = f_pos -2;
+	while (r == 0 && ok_so_far >= 0 && tmp_pos >= 0) {
 		ospfs_direntry_t *od;
 		ospfs_inode_t *entry_oi;
 
@@ -454,7 +455,7 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 *
 		 * EXERCISE: Your code here */
 		// DONE
-		if ((f_pos-2) * OSPFS_DIRENTRY_SIZE >= dir_oi->oi_size)
+		if (dir_oi->oi_size <= tmp_pos * OSPFS_DIRENTRY_SIZE)
 		{
 			r = 1;		/* Fix me! */
 			break;		/* Fix me! */
@@ -482,7 +483,7 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 
 		/* EXERCISE: Your code here */
 		// DONE ?
-		od = ospfs_inode_data(dir_oi, (f_pos-2) * OSPFS_DIRENTRY_SIZE);
+		od = ospfs_inode_data(dir_oi, tmp_pos * OSPFS_DIRENTRY_SIZE);
 		if (od->od_ino != 0) // not blank entry
 		{
 			//eprintk("not blank\n");
@@ -492,39 +493,51 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 				r = -ENOENT;
 				break;
 			}
+			// check type
+			uint32_t type = -1;
+			int len = 0;
+			while(od->od_name[len])
+				len++;
+			if (entry_oi->oi_ftype == OSPFS_FTYPE_REG)
+			{
+				type = DT_REG;
+				ok_so_far = filldir(dirent, od->od_name, len, f_pos, od->od_ino, type);
+			}
+			else if (entry_oi->oi_ftype == OSPFS_FTYPE_DIR)
+			{
+				type = DT_DIR;
+				ok_so_far = filldir(dirent, od->od_name, len, f_pos, od->od_ino, type);
+			}
+			else if (entry_oi->oi_ftype == OSPFS_FTYPE_SYMLINK)
+			{
+				type = DT_LNK;
+				ok_so_far = filldir(dirent, od->od_name, len, f_pos, od->od_ino, type);
+			}
+			else
+			{
+				eprintk("OSPFS: unknown inode type!");
+				return -100;
+			}
+		//ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, type);
+			if (ok_so_far >= 0)
+				tmp_pos++;	
+			else
+			{
+				r = -1;
+				break;
+			}		
 		}
 		else // ignore if blank
 		{
 			//eprintk("blank\n");
-			f_pos++;
+			tmp_pos++;
 			continue;
-		}
-	
-		// check type
-		uint32_t type = -1;
-		if (entry_oi->oi_ftype == OSPFS_FTYPE_REG)
-		{
-			type = DT_REG;
-		}
-		else if (entry_oi->oi_ftype == OSPFS_FTYPE_DIR)
-		{
-			type = DT_DIR;
-		}
-		else if (entry_oi->oi_ftype == OSPFS_FTYPE_SYMLINK)
-		{
-			type = DT_LNK;
-		}
-		else
-		{
-			panic("OSPFS: unknown inode type!");
-			return -100;
-		}
-		ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, type);
-		if (ok_so_far >= 0)
-			f_pos++;				
+			//break;
+		}	
 	}
 
 	// Save the file position and return!
+	f_pos = tmp_pos + 2;
 	filp->f_pos = f_pos;
 	return r;
 }
@@ -574,7 +587,7 @@ ospfs_unlink(struct inode *dirino, struct dentry *dentry)
 		od->od_name[i] = '\0';
 	}
 
-	oi->oi_nlink--;
+	oi->oi_nlink = 0;
 	return 0;
 }
 
@@ -611,12 +624,16 @@ allocate_block(void)
 	uint32_t num_block = ospfs_super->os_nblocks;
 	void* bitmap = ospfs_block(OSPFS_FREEMAP_BLK);
 	uint32_t i;
+	void* blk;
 	// ignore block 0, 1 and 2
 	for (i = 0; i < num_block; i++)
 	{
 		if (bitvector_test(bitmap, i) == 1) // free
 		{
 			bitvector_clear(bitmap,i); // set bit to 0
+			// zero out
+			blk = ospfs_block(i);
+			memset(blk, 0, OSPFS_BLKSIZE);
 			return i;
 		}
 	}
@@ -663,6 +680,8 @@ free_block(uint32_t blockno)
 		{
 			void* bitmap = ospfs_block(OSPFS_FREEMAP_BLK);
 			bitvector_set(bitmap, blockno);
+			void* blk = ospfs_block(blockno);
+			memset(blk, 0, OSPFS_BLKSIZE);
 		}
 	}
 	
@@ -1397,7 +1416,7 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	while ( entry < dir_oi->oi_size)
 	{
 		ret = ospfs_inode_data(dir_oi, entry);
-		if (ret->od_ino == 0) // empty directory
+		if (ret->od_ino <= 0) // empty directory
 		{
 			return ret;
 		}
@@ -1417,7 +1436,7 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	// get the new directory
 	ret = ospfs_inode_data(dir_oi, entry);
 	ret->od_ino = 0;
-	ret->od_name[0] = 0;
+	ret->od_name[0] = '\0';
 	return ret; // Replace this line
 }
 
@@ -1470,7 +1489,7 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 	
 	// update data
 	dst_dir->od_ino = src_dentry->d_inode->i_ino;
-	memcpy(dst_dir->od_name, dst_dentry->d_name.name, dst_dentry->d_name.len);
+	strncpy(dst_dir->od_name, dst_dentry->d_name.name, dst_dentry->d_name.len);
 	dst_dir->od_name[dst_dentry->d_name.len] = 0;
 
 	src_oi->oi_nlink++;
@@ -1509,7 +1528,7 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 static int
 ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidata *nd)
 {
-	//eprintk("ospfs_create(): %s\n", dentry->d_name.name);
+	eprintk("ospfs_create(): %s\n", dentry->d_name.name);
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
 	/* EXERCISE: Your code here. */
@@ -1538,7 +1557,7 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	for(; entry_ino < ospfs_super->os_ninodes; entry_ino++)
 	{
 		curr = ospfs_inode(entry_ino);
-		if (curr->oi_nlink == 0) // empty
+		if (curr->oi_nlink <= 0) // empty
 			break;
 	}
 
@@ -1548,14 +1567,14 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	// Initialize the directory entry and inode.
 	// update dentry
 	entry->od_ino = entry_ino;
-	memcpy(entry->od_name, dentry->d_name.name, dentry->d_name.len);
+	strncpy(entry->od_name, dentry->d_name.name, dentry->d_name.len);
 	
 	// update inode
-	curr->oi_size = 0;
+	//curr->oi_size = 0;
 	curr->oi_ftype = OSPFS_FTYPE_REG;
 	curr->oi_nlink++;
 	curr->oi_mode = mode;
-	memset(curr->oi_direct, 0, sizeof(curr->oi_direct[0])*OSPFS_NDIRECT);
+	//memset(curr->oi_direct, 0, sizeof(curr->oi_direct[0])*OSPFS_NDIRECT);
 	curr->oi_indirect = 0;
 	curr->oi_indirect2 = 0;
 	
@@ -1639,7 +1658,7 @@ ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 	// Initialize the directory entry and inode.
 	// update dentry
 	entry->od_ino = entry_ino;
-	memcpy(entry->od_name, dentry->d_name.name, dentry->d_name.len);
+	strncpy(entry->od_name, dentry->d_name.name, dentry->d_name.len);
 	
 	// update inode
 	// convert to symlink
