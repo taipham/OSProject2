@@ -23,11 +23,15 @@
 #include "md5.h"
 #include "osp2p.h"
 
+#include "pthread.h"
+
 int evil_mode;			// nonzero iff this peer should behave badly
 
 static struct in_addr listen_addr;	// Define listening endpoint
 static int listen_port;
 
+// pthread global variable
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*****************************************************************************
  * TASK STRUCTURE
@@ -312,7 +316,10 @@ static size_t read_tracker_response(task_t *t)
 		if (ret == TBUF_ERROR)
 			die("tracker read error");
 		else if (ret == TBUF_END)
+		{
+			
 			die("tracker connection closed prematurely!\n");
+		}
 	}
 }
 
@@ -577,12 +584,21 @@ static void task_download(task_t *t, task_t *tracker_task)
 			t->disk_filename, (unsigned long) t->total_written);
 		// Inform the tracker that we now have the file,
 		// and can serve it to others!  (But ignore tracker errors.)
+		
+		//printf("GO HERE\n");
+		//pthread
+		//pthread_mutex_lock(&mutex);
 		if (strcmp(t->filename, t->disk_filename) == 0) {
 			osp2p_writef(tracker_task->peer_fd, "HAVE %s\n",
 				     t->filename);
+			//printf("OUT SMT\n");
 			(void) read_tracker_response(tracker_task);
+			//printf("OUT SMT\n");
 		}
+		//pthread_mutex_unlock(&mutex);
+		//printf("GO HERE\n");
 		task_free(t);
+		//printf("AND HERE\n");
 		return;
 	}
 	error("* Download was empty, trying next peer\n");
@@ -679,7 +695,27 @@ static void task_upload(task_t *t)
 	task_free(t);
 }
 
+// for prthread
+struct restrict_arg
+{
+	task_t* t;
+	task_t* tracker_task;
+};
 
+void* pthread_task_download(void * input)
+{
+	printf("Go into pthread_task_donwload()\n");
+	struct restrict_arg* arg = (struct restrict_arg*) input;
+	task_download(arg->t, arg->tracker_task);
+	printf("pthread_task_download() exit\n");
+	pthread_exit((void*) input);
+}
+
+void* pthread_task_upload(void * input)
+{
+	task_upload((task_t *) input);
+	pthread_exit(NULL);
+}
 // main(argc, argv)
 //	The main loop!
 int main(int argc, char *argv[])
@@ -691,6 +727,12 @@ int main(int argc, char *argv[])
 	const char *myalias;
 	struct passwd *pwent;
 
+
+	// pthread
+	pthread_t* thread = malloc(sizeof(pthread_t)* (argc-1));;
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	
 	// Default tracker is read.cs.ucla.edu
 	osp2p_sscanf("131.179.80.139:11111", "%I:%d",
 		     &tracker_addr, &tracker_port);
@@ -758,14 +800,76 @@ int main(int argc, char *argv[])
 	listen_task = start_listen();
 	register_files(tracker_task, myalias);
 
+	fflush(stdout);
+	//thread = malloc(sizeof(pthread_t)* (argc-1));
+	int i = 0;
+	int rc = 0;
+	pid_t pid = 0;
 	// First, download files named on command line.
+	// using pthread
+	fflush(stdout);
 	for (; argc > 1; argc--, argv++)
+	{
+		fflush(stdout);
+		//pid = fork();
 		if ((t = start_download(tracker_task, argv[1])))
-			task_download(t, tracker_task);
+		{
+			//printf("Download file %d\n", i+1);
+			pid = fork();
+			if( pid < 0) {
+				error("Fork failed");
+				exit(0);
+			}
+			else if (pid == 0)
+			{
+				task_download(t, tracker_task);
+				_exit(0);
+			}
+			else
+			{
+				continue;
+			}
 
+			//for(; pid			
+			/*
+			struct restrict_arg* a = malloc(sizeof(struct restrict_arg));
+			//struct restrict_arg a;
+			a->t = t;
+			a->tracker_task = tracker_task;
+			rc = pthread_create(&(thread[i]), NULL, pthread_task_download, (void*)a);
+
+			if (rc == 0)
+				printf("pthread_create() error %d\n", i+1);
+			//i++;
+			*/
+		}
+		i++;
+	}
+	
+	/*
+	int j;
+	for(j = 0; j <i; j++)
+	{
+		pthread_join(thread[j], NULL);
+	}
+	free(thread);
+	*/
 	// Then accept connections from other peers and upload files to them!
 	while ((t = task_listen(listen_task)))
-		task_upload(t);
+	{
+		pid = fork();
+		if (pid == -1)
+			error("Fork error()\n");
+		else if (pid == 0)
+		{
+			task_upload(t);
+			_exit(0);
+		}
+		else {
+		}
+	}
 
+	pthread_attr_destroy(&attr);
+	//pthread_exit(NULL);
 	return 0;
 }
