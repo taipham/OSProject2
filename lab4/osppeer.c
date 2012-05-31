@@ -728,6 +728,45 @@ void* pthread_task_upload(void * input)
 	task_upload((task_t *) input);
 	pthread_exit(NULL);
 }
+
+// create_md5 to create a md5 for a file
+//
+char* create_md5(char file_name[]) {
+    FILE *pFile;
+    long lSize;
+    char *buffer;
+    size_t result;
+
+    pFile = fopen ( "myfile.bin" , "rb" );
+    if (pFile==NULL) {fputs ("File error",stderr); exit (1);}
+
+    // obtain file size:
+    fseek (pFile , 0 , SEEK_END);
+    lSize = ftell (pFile);
+    rewind (pFile);
+
+    // allocate memory to contain the whole file:
+    buffer = (char*) malloc (sizeof(char)*lSize);
+    if (buffer == NULL) {fputs ("Memory error",stderr); exit (2);}
+
+    // copy the file into the buffer:
+    result = fread (buffer,1,lSize,pFile);
+    if (result != lSize) {fputs ("Reading error",stderr); exit (3);}
+
+    // create md5 for a file
+    md5_state_t *pms = malloc(sizeof(md5_state_t));
+    md5_init(pms);
+    md5_append(pms, buffer, lSize);
+    char *text_digest = malloc(sizeof(char) * MD5_DIGEST_SIZE);
+    md5_finish_text(pms, text_digest, 1);
+
+
+    fclose(pFile);
+    free(buffer);
+    return text_digest;
+}
+
+
 // main(argc, argv)
 //	The main loop!
 int main(int argc, char *argv[])
