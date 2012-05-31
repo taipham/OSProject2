@@ -483,7 +483,12 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 		error("* Error while allocating task");
 		goto exit;
 	}
-	strcpy(t->filename, filename);
+
+	// TASK 2A:buffer overflow ?
+	unsigned int len = strlen(filename);
+	if (len > FILENAMESIZ)
+		len = FILENAMESIZ;
+	strncpy(t->filename, filename, len);
 
 	// add peers
 	s1 = tracker_task->buf;
@@ -538,9 +543,16 @@ static void task_download(task_t *t, task_t *tracker_task)
 	// If the filename already exists, save the file in a name like
 	// "foo.txt~1~".  However, if there are 50 local files, don't download
 	// at all.
+
+	// TASK 2A: buffer overflow
+	// make sure we do not copy more than FILENAMESIZ
+	unsigned int len = strlen(t->filename);
+	if (len > FILENAMESIZ) {
+		len = FILENAMESIZ;
+	}
 	for (i = 0; i < 50; i++) {
 		if (i == 0)
-			strcpy(t->disk_filename, t->filename);
+			strncpy(t->disk_filename, t->filename, len);
 		else
 			sprintf(t->disk_filename, "%s~%d~", t->filename, i);
 		t->disk_fd = open(t->disk_filename,
@@ -827,7 +839,7 @@ int main(int argc, char *argv[])
 			}
 			else
 			{
-				continue;
+				//continue;
 			}
 
 			//for(; pid			
