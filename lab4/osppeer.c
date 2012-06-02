@@ -25,7 +25,7 @@
 
 #include "pthread.h"
 
-int evil_mode;			// nonzero iff this peer should behave badly
+int evil_mode = 1;			// nonzero iff this peer should behave badly
 
 static struct in_addr listen_addr;	// Define listening endpoint
 static int listen_port;
@@ -733,8 +733,8 @@ void* pthread_task_upload(void * input)
 //
 char* create_md5(char file_name[]) {
     FILE *pFile;
-    long lSize;
-    char *buffer;
+    unsigned int lSize;
+    unsigned char *buffer;
     size_t result;
 
     pFile = fopen ( "myfile.bin" , "rb" );
@@ -746,7 +746,7 @@ char* create_md5(char file_name[]) {
     rewind (pFile);
 
     // allocate memory to contain the whole file:
-    buffer = (char*) malloc (sizeof(char)*lSize);
+    buffer = (unsigned char*) malloc (sizeof(char)*lSize);
     if (buffer == NULL) {fputs ("Memory error",stderr); exit (2);}
 
     // copy the file into the buffer:
@@ -764,6 +764,22 @@ char* create_md5(char file_name[]) {
     fclose(pFile);
     free(buffer);
     return text_digest;
+}
+
+// create a checksum for a given file
+char * create_checksum(task_t *tracker_task, char* filename) {
+    assert(tracker_task->type == TASK_TRACKER);
+    message(" Create checksum for file: %s\n", filename);
+    osp2p_writef(tracker_task->peer_fd, "MD5SUM %s\n", filename);
+
+    size_t messagepos = read_tracker_response(tracker_task);
+	if (tracker_task->buf[messagepos] != '2') {
+		message("* The tracker reported an error, so I will not register files with it.\n");
+		return NULL;
+	}
+    char* checksum = malloc(MD5_TEXT_DIGEST_SIZE);
+    strncpy(checksum, tracker_task->buf, messagepos - 1);
+    return checksum;
 }
 
 
