@@ -22,14 +22,16 @@ Name:
 Student ID: 
 Email: 
 
-# EXERCISE 1: What method you used to make your peer download and upload
-#    files in parallel?  (~1-3 sentences)
+EXERCISE 1: What method you used to make your peer download and upload
+    files in parallel?  (~1-3 sentences)
+We use the conventinal fork() method, for each download, we fork() a new process to handle the download
 
-# EXERCISE 2A: What conditions did you find and fix that would have
-#    triggered a buffer overrun bug?  (~1-3 sentences each)
+EXERCISE 2A: What conditions did you find and fix that would have
+    triggered a buffer overrun bug?  (~1-3 sentences each)
+- We found a buffer oveflow if the file name is bigger than FILENAMESIZ, we fixed it by set the maximum filename length to be this value
 
-# EXERCISE 2B: What other robustness problems did you fix?  (~1-3 sentences
-#    each)
+EXERCISE 2B: What other robustness problems did you fix?  (~1-3 sentences
+    each)
 
 # EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why
 #    are they attacks?  (~3-10 sentences each)
