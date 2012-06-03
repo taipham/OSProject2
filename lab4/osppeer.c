@@ -25,7 +25,7 @@
 
 #include "pthread.h"
 
-int evil_mode = 1;			// nonzero iff this peer should behave badly
+int evil_mode = 0;			// nonzero iff this peer should behave badly
 
 static struct in_addr listen_addr;	// Define listening endpoint
 static int listen_port;
@@ -396,7 +396,7 @@ char* create_md5(char file_name[]) {
     unsigned char *buffer;
     size_t result;
 
-    pFile = fopen ( "myfile.bin" , "rb" );
+    pFile = fopen ( file_name , "rb" );
     if (pFile==NULL) {fputs ("File error",stderr); exit (1);}
 
     // obtain file size:
@@ -416,7 +416,8 @@ char* create_md5(char file_name[]) {
     md5_state_t *pms = malloc(sizeof(md5_state_t));
     md5_init(pms);
     md5_append(pms, buffer, lSize);
-    char *text_digest = malloc(sizeof(char) * MD5_DIGEST_SIZE);
+    char *text_digest = malloc(sizeof(char) * (MD5_TEXT_DIGEST_SIZE + 1));
+    text_digest[MD5_TEXT_DIGEST_SIZE] = '\0';
     md5_finish_text(pms, text_digest, 1);
 
 
@@ -467,21 +468,22 @@ static void register_files(task_t *tracker_task, const char *myalias)
 
         char* checksum = create_md5(ent->d_name);
         // make some evil move
-        if (evil_mode == 2) {
-            if (checksum[0] != 'e') {
-                checksum[0] = 'e';
-                checksum[1] = 'v';
-                checksum[2] = 'i';
-                checksum[3] = 'l';
-            } else {
-                checksum[3] = 'e';
-                checksum[2] = 'v';
-                checksum[1] = 'i';
-                checksum[0] = 'l';
-            }
-        }
+        /* if (evil_mode == 2) { */
+        /*     if (checksum[0] != 'e') { */
+        /*         checksum[0] = 'e'; */
+        /*         checksum[1] = 'v'; */
+        /*         checksum[2] = 'i'; */
+        /*         checksum[3] = 'l'; */
+        /*     } else { */
+        /*         checksum[3] = 'e'; */
+        /*         checksum[2] = 'v'; */
+        /*         checksum[1] = 'i'; */
+        /*         checksum[0] = 'l'; */
+        /*     } */
+        /* } */
+        /* printf("Registering file %s with checksum: %s\n", ent->d_name, checksum); */
 
-		osp2p_writef(tracker_task->peer_fd, "HAVE %s\n", ent->d_name);
+		osp2p_writef(tracker_task->peer_fd, "HAVE %s %s\n", ent->d_name, checksum);
 		messagepos = read_tracker_response(tracker_task);
 		if (tracker_task->buf[messagepos] != '2')
 			error("* Tracker error message while registering '%s':\n%s",
@@ -564,16 +566,20 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 // this should be called when the file is empty
 char * create_checksum(task_t *tracker_task, char* filename) {
     assert(tracker_task->type == TASK_TRACKER);
-    message(" Create checksum for file: %s\n", filename);
+    message("* Create checksum for file: %s\n", filename);
     osp2p_writef(tracker_task->peer_fd, "MD5SUM %s\n", filename);
 
     size_t messagepos = read_tracker_response(tracker_task);
     if (tracker_task->buf[messagepos] != '2') {
-        message("* The tracker reported an error, so I will not register files with it.\n");
+        message("* The tracker reported an error.\n");
         return NULL;
     }
-    char* checksum = malloc(MD5_TEXT_DIGEST_SIZE);
+    char* checksum = (char *) malloc(sizeof(char) * (MD5_TEXT_DIGEST_SIZE + 1));
+    /* printf("creating server checksum from buffer: %s\n", tracker_task->buf); */
+    /* printf("message pos: %d\n", messagepos); */
+    /* printf("size of md5 text: %d\n", messagepos); */
     strncpy(checksum, tracker_task->buf, messagepos - 1);
+    checksum[messagepos - 1] = '\0';
     return checksum;
 }
 
@@ -668,10 +674,11 @@ static void task_download(task_t *t, task_t *tracker_task)
 		// and can serve it to others!  (But ignore tracker errors.)
         // check the checksum
         char *client_checksum = create_md5(t->disk_filename);
-        char *server_checksum = create_checksum(tracker_task, t->filename);
 
         pthread_mutex_lock(&mutex);
+        char *server_checksum = create_checksum(tracker_task, t->filename);
         int count = 0;
+        /* printf("Go HERE, checksum: %s\n", client_checksum); */
         while(server_checksum == NULL && count < 5) {
             server_checksum = create_checksum(tracker_task, t->filename);
             count++;
@@ -680,14 +687,14 @@ static void task_download(task_t *t, task_t *tracker_task)
 
         if (server_checksum != NULL && strcmp(client_checksum, server_checksum) != 0) {
             // checksum is different
-            error("Checksum test failed, client and sever's record is not the same\n");
+            error("Checksum test failed for file: %s, client: %s and sever: %s is not the same\n", t->disk_filename, client_checksum, server_checksum);
             goto try_again;
         }
 
         if (server_checksum == NULL) {
             message("Checksum check rejected because it cannot get server's checksum response");
         } else {
-            message("Checksum check passed\n");
+            message("* Checksum check passed\n");
         }
 		
 		//printf("GO HERE\n");
@@ -811,29 +818,44 @@ static void task_upload(task_t *t)
 		error("File does not exist\n");
 		goto exit;
 	}
-	t->disk_fd = open(t->filename, O_RDONLY);
-	if (t->disk_fd == -1) {
-		error("* Cannot open file %s", t->filename);
-		goto exit;
-	}
 
-	message("* Transferring file %s\n", t->filename);
-	// Now, read file from disk and write it to the requesting peer.
-	while (1) {
-		int ret = write_from_taskbuf(t->peer_fd, t);
-		if (ret == TBUF_ERROR) {
-			error("* Peer write error");
-			goto exit;
-		}
+    if (evil_mode != 2) {
+        t->disk_fd = open(t->filename, O_RDONLY);
+        if (t->disk_fd == -1) {
+            error("* Cannot open file %s", t->filename);
+            goto exit;
+        }
 
-		ret = read_to_taskbuf(t->disk_fd, t);
-		if (ret == TBUF_ERROR) {
-			error("* Disk read error");
-			goto exit;
-		} else if (ret == TBUF_END && t->head == t->tail)
-			/* End of file */
-			break;
-	}
+        message("* Transferring file %s\n", t->filename);
+        // Now, read file from disk and write it to the requesting peer.
+        while (1) {
+            int ret = write_from_taskbuf(t->peer_fd, t);
+            if (ret == TBUF_ERROR) {
+                error("* Peer write error");
+                goto exit;
+            }
+
+            // evil mode
+            if (evil_mode == 1) {
+                lseek(t->disk_fd, 0, 0);
+                //t->head = 0;
+            }
+
+            ret = read_to_taskbuf(t->disk_fd, t);
+
+            printf("disk_fd: %d\n", t->disk_fd);
+            if (ret == TBUF_ERROR) {
+                error("* Disk read error");
+                goto exit;
+            } else if (ret == TBUF_END && t->head == t->tail)
+                /* End of file */
+                break;
+        }
+    } else if (evil_mode == 2) {
+        while(1) {
+            osp2p_writef(t->peer_fd, "EVIL WRITE");
+        }
+    }
 
 	message("* Upload of %s complete\n", t->filename);
 
