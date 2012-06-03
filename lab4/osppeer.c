@@ -388,6 +388,43 @@ task_t *start_listen(void)
 }
 
 
+// create_md5 to create a md5 for a file
+//
+char* create_md5(char file_name[]) {
+    FILE *pFile;
+    unsigned int lSize;
+    unsigned char *buffer;
+    size_t result;
+
+    pFile = fopen ( "myfile.bin" , "rb" );
+    if (pFile==NULL) {fputs ("File error",stderr); exit (1);}
+
+    // obtain file size:
+    fseek (pFile , 0 , SEEK_END);
+    lSize = ftell (pFile);
+    rewind (pFile);
+
+    // allocate memory to contain the whole file:
+    buffer = (unsigned char*) malloc (sizeof(char)*lSize);
+    if (buffer == NULL) {fputs ("Memory error",stderr); exit (2);}
+
+    // copy the file into the buffer:
+    result = fread (buffer,1,lSize,pFile);
+    if (result != lSize) {fputs ("Reading error",stderr); exit (3);}
+
+    // create md5 for a file
+    md5_state_t *pms = malloc(sizeof(md5_state_t));
+    md5_init(pms);
+    md5_append(pms, buffer, lSize);
+    char *text_digest = malloc(sizeof(char) * MD5_DIGEST_SIZE);
+    md5_finish_text(pms, text_digest, 1);
+
+
+    fclose(pFile);
+    free(buffer);
+    return text_digest;
+}
+
 // register_files(tracker_task, myalias)
 //	Registers this peer with the tracker, using 'myalias' as this peer's
 //	alias.  Also register all files in the current directory, allowing
@@ -427,6 +464,22 @@ static void register_files(task_t *tracker_task, const char *myalias)
 			    || ent->d_name[namelen - 1] == 'h'))
 		    || (namelen > 1 && ent->d_name[namelen - 1] == '~'))
 			continue;
+
+        char* checksum = create_md5(ent->d_name);
+        // make some evil move
+        if (evil_mode == 2) {
+            if (checksum[0] != 'e') {
+                checksum[0] = 'e';
+                checksum[1] = 'v';
+                checksum[2] = 'i';
+                checksum[3] = 'l';
+            } else {
+                checksum[3] = 'e';
+                checksum[2] = 'v';
+                checksum[1] = 'i';
+                checksum[0] = 'l';
+            }
+        }
 
 		osp2p_writef(tracker_task->peer_fd, "HAVE %s\n", ent->d_name);
 		messagepos = read_tracker_response(tracker_task);
@@ -506,6 +559,23 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 	return t;
 }
 
+
+// create a checksum for a given file
+// this should be called when the file is empty
+char * create_checksum(task_t *tracker_task, char* filename) {
+    assert(tracker_task->type == TASK_TRACKER);
+    message(" Create checksum for file: %s\n", filename);
+    osp2p_writef(tracker_task->peer_fd, "MD5SUM %s\n", filename);
+
+    size_t messagepos = read_tracker_response(tracker_task);
+    if (tracker_task->buf[messagepos] != '2') {
+        message("* The tracker reported an error, so I will not register files with it.\n");
+        return NULL;
+    }
+    char* checksum = malloc(MD5_TEXT_DIGEST_SIZE);
+    strncpy(checksum, tracker_task->buf, messagepos - 1);
+    return checksum;
+}
 
 // task_download(t, tracker_task)
 //	Downloads the file specified by the input task 't' into the current
@@ -596,6 +666,29 @@ static void task_download(task_t *t, task_t *tracker_task)
 			t->disk_filename, (unsigned long) t->total_written);
 		// Inform the tracker that we now have the file,
 		// and can serve it to others!  (But ignore tracker errors.)
+        // check the checksum
+        char *client_checksum = create_md5(t->disk_filename);
+        char *server_checksum = create_checksum(tracker_task, t->filename);
+
+        pthread_mutex_lock(&mutex);
+        int count = 0;
+        while(server_checksum == NULL && count < 5) {
+            server_checksum = create_checksum(tracker_task, t->filename);
+            count++;
+        }
+        pthread_mutex_unlock(&mutex);
+
+        if (server_checksum != NULL && strcmp(client_checksum, server_checksum) != 0) {
+            // checksum is different
+            error("Checksum test failed, client and sever's record is not the same\n");
+            goto try_again;
+        }
+
+        if (server_checksum == NULL) {
+            message("Checksum check rejected because it cannot get server's checksum response");
+        } else {
+            message("Checksum check passed\n");
+        }
 		
 		//printf("GO HERE\n");
 		//pthread
@@ -729,58 +822,7 @@ void* pthread_task_upload(void * input)
 	pthread_exit(NULL);
 }
 
-// create_md5 to create a md5 for a file
-//
-char* create_md5(char file_name[]) {
-    FILE *pFile;
-    unsigned int lSize;
-    unsigned char *buffer;
-    size_t result;
 
-    pFile = fopen ( "myfile.bin" , "rb" );
-    if (pFile==NULL) {fputs ("File error",stderr); exit (1);}
-
-    // obtain file size:
-    fseek (pFile , 0 , SEEK_END);
-    lSize = ftell (pFile);
-    rewind (pFile);
-
-    // allocate memory to contain the whole file:
-    buffer = (unsigned char*) malloc (sizeof(char)*lSize);
-    if (buffer == NULL) {fputs ("Memory error",stderr); exit (2);}
-
-    // copy the file into the buffer:
-    result = fread (buffer,1,lSize,pFile);
-    if (result != lSize) {fputs ("Reading error",stderr); exit (3);}
-
-    // create md5 for a file
-    md5_state_t *pms = malloc(sizeof(md5_state_t));
-    md5_init(pms);
-    md5_append(pms, buffer, lSize);
-    char *text_digest = malloc(sizeof(char) * MD5_DIGEST_SIZE);
-    md5_finish_text(pms, text_digest, 1);
-
-
-    fclose(pFile);
-    free(buffer);
-    return text_digest;
-}
-
-// create a checksum for a given file
-char * create_checksum(task_t *tracker_task, char* filename) {
-    assert(tracker_task->type == TASK_TRACKER);
-    message(" Create checksum for file: %s\n", filename);
-    osp2p_writef(tracker_task->peer_fd, "MD5SUM %s\n", filename);
-
-    size_t messagepos = read_tracker_response(tracker_task);
-	if (tracker_task->buf[messagepos] != '2') {
-		message("* The tracker reported an error, so I will not register files with it.\n");
-		return NULL;
-	}
-    char* checksum = malloc(MD5_TEXT_DIGEST_SIZE);
-    strncpy(checksum, tracker_task->buf, messagepos - 1);
-    return checksum;
-}
 
 
 // main(argc, argv)
