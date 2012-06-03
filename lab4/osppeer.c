@@ -770,6 +770,47 @@ static void task_upload(task_t *t)
 	}
 	t->head = t->tail = 0;
 
+	// TASK 2B
+	char file_path_buf[PATH_MAX+1];
+	char current_path_buf[PATH_MAX+1];
+	char* current_path = getcwd(current_path_buf, PATH_MAX + 1); // get current dir
+	char* file_path = realpath(t->filename, file_path_buf);
+
+	printf("Requested: %s\n", file_path);
+	
+	// sanity check
+	if (current_path == NULL) {
+		errno = ENOENT;
+		error("Invalid current folder\n");
+		goto exit;
+	}
+	if (file_path == NULL) {
+		errno = ENOENT;
+		error("Invalid file path\n");
+		goto exit;
+	}
+
+	// check for name overflow
+	if (strlen(file_path) >= FILENAMESIZ) {
+		errno = ENOENT;
+		error("File name is too big\n");
+		goto exit;
+	}
+	
+	// check if file is in current directory
+	if (strncmp(current_path, file_path, strlen(current_path))) {
+		errno = ENOENT;
+		error("File not in current directory\n");
+		goto exit;
+	} 
+
+	// check if file exist
+	struct stat data;
+	if (stat(file_path, &data) < 0) {
+		errno = ENOENT;
+		error("File does not exist\n");
+		goto exit;
+	}
 	t->disk_fd = open(t->filename, O_RDONLY);
 	if (t->disk_fd == -1) {
 		error("* Cannot open file %s", t->filename);
@@ -821,8 +862,6 @@ void* pthread_task_upload(void * input)
 	task_upload((task_t *) input);
 	pthread_exit(NULL);
 }
-
-
 
 
 // main(argc, argv)
