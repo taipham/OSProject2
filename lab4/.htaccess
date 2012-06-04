@@ -1,99 +1,57 @@
-# Refuse to serve any file not in an specific folder for download (in this case, test folder)
+## Main setting and options ##
 
+# Don't follow symlink or list the indexes
+Options: -FollowSymLinks -Indexes
+
+# Other general settings
+DefaultLanguage en-US
+AddDefaultCharset UTF-8
+
+## Protect any important file for request ##
+# protect itself and password file
+<filesMatch "\.(htaccess|htpasswd|sh|log)$">
+	Order Allow, Deny
+	Deny from all
+	Allow from localhost
+</filesMatch>
+
+# protect any code file
+<filesMatch "\.(c|sh|o|h)$">
+	Order Deny, Allow
+	Deny from all
+	Allow from localhost
+</filesMatch>
+
+# protect special files that do not belong to the above group
 <Files "answer.txt">
-Order deny, allow
-Deny from all
-Allow from localhost
-</Files>
-
-<Files "checklab.sh">
-Order deny, allow
-Deny from all
-Allow from localhost
+	Order deny, allow
+	Deny from all
+	Allow from localhost
 </Files>
 
 <Files "GNUmakefile">
-Order deny, allow
-Deny from all
-Allow from localhost
+	Order deny, allow
+	Deny from all
+	Allow from localhost
 </Files>
 
-<Files "md5.c">
-Order deny, allow
-Deny from all
-Allow from localhost
-</Files>
+## Limiting
+# Limit upload file size to protect again DoS
+LimitRequestBody 1024000 # bytes, 0-2147483647 (2GB)
 
-<Files "md5.h">
-Order deny, allow
-Deny from all
-Allow from localhost
-</Files>
+==========================================================#
+	IF USING PASSWORD PROTECTION IN OUR SERVER
+==========================================================#
 
-<Files "md5">
-Order deny, allow
-Deny from all
-Allow from localhost
-</Files>
+Require (user|group|valid-user) (username|groupname)
 
-<Files "osp2p.h">
-Order deny, allow
-Deny from all
-Allow from localhost
-</Files>
+## Basic protection
+AuthType basic
+AuthName "server"
+AuthUserFile /.htpasswd
+AuthGroupFile /dev/null
+Require valid-user
 
-<Files "osppeer.c">
-Order deny, allow
-Deny from all
-Allow from localhost
-</Files>
-
-<Files "osppeer.c">
-Order deny, allow
-Deny from all
-Allow from localhost
-</Files>
-
-<Files "osppeer.o">
-Order deny, allow
-Deny from all
-Allow from localhost
-</Files>
-
-<Files "osppeer">
-Order deny, allow
-Deny from all
-Allow from localhost
-</Files>
-
-<Files "writescan.c">
-Order deny, allow
-Deny from all
-Allow from localhost
-</Files>
-
-<Files "writescan.o">
-Order deny, allow
-Deny from all
-Allow from localhost
-</Files>
-
-<Files ".htaccess">
-Order deny, allow
-Deny from all
-Allow from localhost
-</Files>
-
-# Allow access to the test directory
-<Directory /test>
-Order allow, deny
-Allow from all
-</Directory>
-
-# Limiting
-<Limit GET POST>
-Order deny, allow
-Deny from all
-Allow from .ucla.edu
-Allow from localhost
+<Limit POST GET>
+	Require valid-user
 </Limit>
