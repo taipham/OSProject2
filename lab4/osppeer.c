@@ -26,7 +26,7 @@
 #include "pthread.h"
 
 int evil_mode = 0;			// nonzero iff this peer should behave badly
-#define EXTRA_CREDIT
+//#define EXTRA_CREDIT
 
 static struct in_addr listen_addr;	// Define listening endpoint
 static int listen_port;
