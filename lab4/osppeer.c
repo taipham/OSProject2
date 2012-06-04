@@ -26,6 +26,7 @@
 #include "pthread.h"
 
 int evil_mode = 0;			// nonzero iff this peer should behave badly
+#define EXTRA_CREDIT
 
 static struct in_addr listen_addr;	// Define listening endpoint
 static int listen_port;
@@ -465,7 +466,7 @@ static void register_files(task_t *tracker_task, const char *myalias)
 			    || ent->d_name[namelen - 1] == 'h'))
 		    || (namelen > 1 && ent->d_name[namelen - 1] == '~'))
 			continue;
-
+#ifdef EXTRA_CREDIT
         char* checksum = create_md5(ent->d_name);
         // make some evil move
         /* if (evil_mode == 2) { */
@@ -484,6 +485,9 @@ static void register_files(task_t *tracker_task, const char *myalias)
         /* printf("Registering file %s with checksum: %s\n", ent->d_name, checksum); */
 
 		osp2p_writef(tracker_task->peer_fd, "HAVE %s %s\n", ent->d_name, checksum);
+#else
+		osp2p_writef(tracker_task->peer_fd, "HAVE %s\n", ent->d_name);
+#endif
 		messagepos = read_tracker_response(tracker_task);
 		if (tracker_task->buf[messagepos] != '2')
 			error("* Tracker error message while registering '%s':\n%s",
@@ -673,6 +677,7 @@ static void task_download(task_t *t, task_t *tracker_task)
 		// Inform the tracker that we now have the file,
 		// and can serve it to others!  (But ignore tracker errors.)
         // check the checksum
+#ifdef EXTRA_CREDIT
         char *client_checksum = create_md5(t->disk_filename);
 
         pthread_mutex_lock(&mutex);
@@ -696,7 +701,7 @@ static void task_download(task_t *t, task_t *tracker_task)
         } else {
             message("* Checksum check passed\n");
         }
-		
+#endif
 		//printf("GO HERE\n");
 		//pthread
 		//pthread_mutex_lock(&mutex);
