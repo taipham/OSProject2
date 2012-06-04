@@ -44,7 +44,9 @@ attack peers with 'cat2.jpg', first, request the same file name many
 times with valid file until other peers give up; however, we dont check
 the file is good or not.  Also, it read the file into task buffer from
 the victim peers without stopping. The victim peers will never finished
-util they give up.
+util they give up. Third, when (evil_mode == 3 and enable Extra Credit),
+the evil peer will modified the md5 of the downloaded file and try again
+until victim peers gave up.
 
 
 Upload Attack: take advantage of overrun disk space of peer.
