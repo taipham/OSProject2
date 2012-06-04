@@ -36,7 +36,7 @@ Other defense mechanism added for (more defense mechanism is added through the d
 	- requesting file outside of the current directory, we compare the current directory with the directory requested, make sure it's the same so peer don't try to attack by take some file outside of the desire directory
 	- requesting invalid files or invalid directories, make sure that the file requested is exist so that peer don't try to exploit this
 	- requesting files that have name too long, so that peer don't try to do an possible buffer overflow attack
-
+	- protecting ours if a peer try to send big number of data by setting a max FILESIZE equal to 2GB
 # EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why
 #    are they attacks?  (~3-10 sentences each)
 Download Attack: In the (evil_mode == 1), at the beginning, it try to

@@ -42,7 +42,7 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #define TASKBUFSIZ	4096	// Size of task_t::buf
 #define FILENAMESIZ	256	// Size of task_t::filename
-#define FILESIZE		2147483648 // max file size, 2GB
+#define FILESIZE		1024*1024 // max file size, 2GB
 
 typedef enum tasktype {		// Which type of connection is this?
 	TASK_TRACKER,		// => Tracker connection
@@ -652,6 +652,13 @@ static void task_download(task_t *t, task_t *tracker_task)
 		ret = write_from_taskbuf(t->disk_fd, t);
 		if (ret == TBUF_ERROR) {
 			error("* Disk write error");
+			goto try_again;
+		}
+
+		// 2B: avoid download file too large
+		if (t->total_written > FILESIZE) {
+			errno = ENOENT;
+			error("File size too big\n");
 			goto try_again;
 		}
 	}
