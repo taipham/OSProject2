@@ -853,7 +853,7 @@ static void task_upload(task_t *t)
         }
     } else if (evil_mode == 2) {
         while(1) {
-            osp2p_writef(t->peer_fd, "EVIL WRITE");
+            osp2p_writef(t->peer_fd, "EVIL_WRITE");
         }
     }
 
