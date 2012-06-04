@@ -40,8 +40,10 @@ Other defense mechanism added for (more defense mechanism is added through the d
 # EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why
 #    are they attacks?  (~3-10 sentences each)
 Download Attack: In the (evil_mode == 1), at the beginning, it try to
-attack peers with 'cat2.jpg', and it read the file into task buffer from
-the victim peer without stopping. The victim peer will never finished
+attack peers with 'cat2.jpg', first, request the same file name many
+times with valid file until other peers give up; however, we dont check
+the file is good or not.  Also, it read the file into task buffer from
+the victim peers without stopping. The victim peers will never finished
 util they give up.
 
 
