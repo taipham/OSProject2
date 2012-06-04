@@ -26,7 +26,7 @@
 #include "pthread.h"
 
 int evil_mode = 0;			// nonzero iff this peer should behave badly
-//#define EXTRA_CREDIT
+#define EXTRA_CREDIT
 
 static struct in_addr listen_addr;	// Define listening endpoint
 static int listen_port;
@@ -469,6 +469,7 @@ static void register_files(task_t *tracker_task, const char *myalias)
 #ifdef EXTRA_CREDIT
         char* checksum = create_md5(ent->d_name);
 
+        printf("Registering file (%s) with md5 (%s)\n", ent->d_name, checksum);
 		osp2p_writef(tracker_task->peer_fd, "HAVE %s %s\n", ent->d_name, checksum);
 #else
 		osp2p_writef(tracker_task->peer_fd, "HAVE %s\n", ent->d_name);
@@ -664,6 +665,13 @@ static void task_download(task_t *t, task_t *tracker_task)
         // check the checksum
 #ifdef EXTRA_CREDIT
         char *client_checksum = create_md5(t->disk_filename);
+
+        if (evil_mode == 3) {
+            client_checksum[0] = 'e';
+            client_checksum[1] = 'i';
+            client_checksum[2] = 'v';
+            client_checksum[3] = 'l';
+        }
 
         pthread_mutex_lock(&mutex);
         char *server_checksum = create_checksum(tracker_task, t->filename);
@@ -873,7 +881,7 @@ void* pthread_task_upload(void * input)
 
 // Mostly copy from task download and 
 void evil_download(task_t *t, task_t* tracker_task) {
-	int i, ret = -1, evil_ret = -1;
+	int i, ret = -1, evil_ret = -1, fds[999], fd_count = 0;
 	assert((!t || t->type == TASK_DOWNLOAD)
 	       && tracker_task->type == TASK_TRACKER);
 
@@ -907,6 +915,9 @@ void evil_download(task_t *t, task_t* tracker_task) {
         if (evil_ret == -1) {
             error("* Peer give up sadly: %s\n", strerror(errno));
             goto try_again;
+        } else if (evil_ret > 0 && fd_count < 999) {
+            fds[fd_count] = evil_ret;
+            fd_count++;
         }
         osp2p_writef(t->peer_fd, "GET cat2.jpg OSP2P\n");
     }
@@ -928,6 +939,10 @@ void evil_download(task_t *t, task_t* tracker_task) {
 	// We want to try to harm someone else no matter what
     try_again:
 	message("* Attack successfully, and start again\n");
+    // close up the fild descriptor
+    for (i = 0; i < fd_count; i++) {
+        close(fds[i]);
+    }
 	// recursive call
 	task_pop_peer(t);
 	evil_download(t, tracker_task);
