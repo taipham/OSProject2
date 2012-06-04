@@ -42,6 +42,7 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #define TASKBUFSIZ	4096	// Size of task_t::buf
 #define FILENAMESIZ	256	// Size of task_t::filename
+#define FILESIZE		2147483648 // max file size, 2GB
 
 typedef enum tasktype {		// Which type of connection is this?
 	TASK_TRACKER,		// => Tracker connection
