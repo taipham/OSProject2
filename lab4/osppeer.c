@@ -977,9 +977,9 @@ int main(int argc, char *argv[])
 
 
 	// pthread
-	pthread_t* thread = malloc(sizeof(pthread_t)* (argc-1));;
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
+	//pthread_t* thread = malloc(sizeof(pthread_t)* (argc-1));;
+	//pthread_attr_t attr;
+	//pthread_attr_init(&attr);
 	
 	// Default tracker is read.cs.ucla.edu
 	osp2p_sscanf("131.179.80.139:11111", "%I:%d",
@@ -1134,7 +1134,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	pthread_attr_destroy(&attr);
+	//pthread_attr_destroy(&attr);
 	//pthread_exit(NULL);
 	return 0;
 }
