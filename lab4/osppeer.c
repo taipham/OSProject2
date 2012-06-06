@@ -561,17 +561,25 @@ char * create_checksum(task_t *tracker_task, char* filename) {
     osp2p_writef(tracker_task->peer_fd, "MD5SUM %s\n", filename);
 
     size_t messagepos = read_tracker_response(tracker_task);
-    if (tracker_task->buf[messagepos] != '2') {
-        message("* The tracker reported an error.\n");
-        return NULL;
-    }
+	if (tracker_task->buf[messagepos] != '2') {
+		error("* Tracker error message while requesting '%s':\n%s",
+		      filename, &tracker_task->buf[messagepos]);
+		goto exit;
+	}
     char* checksum = (char *) malloc(sizeof(char) * (MD5_TEXT_DIGEST_SIZE + 1));
     /* printf("creating server checksum from buffer: %s\n", tracker_task->buf); */
     /* printf("message pos: %d\n", messagepos); */
     /* printf("size of md5 text: %d\n", messagepos); */
     strncpy(checksum, tracker_task->buf, messagepos - 1);
     checksum[messagepos - 1] = '\0';
+    // check the lenght of the sting is valid
+
+	unsigned int len = strlen(checksum);
+	if (len > (MD5_TEXT_DIGEST_SIZE + 1))
+        goto exit;
     return checksum;
+exit:
+    return NULL;
 }
 
 // task_download(t, tracker_task)
@@ -685,7 +693,7 @@ static void task_download(task_t *t, task_t *tracker_task)
         char *server_checksum = create_checksum(tracker_task, t->filename);
         int count = 0;
         /* printf("Go HERE, checksum: %s\n", client_checksum); */
-        while(server_checksum == NULL && count < 5) {
+        while(server_checksum == NULL && count < 3) {
             server_checksum = create_checksum(tracker_task, t->filename);
             count++;
         }
@@ -700,7 +708,7 @@ static void task_download(task_t *t, task_t *tracker_task)
         if (server_checksum == NULL) {
             message("Checksum check rejected because it cannot get server's checksum response");
         } else {
-            message("* Checksum check passed\n");
+            message("* Checksum check passed for file: %s\n", t->disk_filename);
         }
 #endif
 		//printf("GO HERE\n");
