@@ -575,7 +575,7 @@ char * create_checksum(task_t *tracker_task, char* filename) {
     // check the lenght of the sting is valid
 
 	unsigned int len = strlen(checksum);
-	if (len > (MD5_TEXT_DIGEST_SIZE + 1))
+	if (len > MD5_TEXT_DIGEST_SIZE)
         goto exit;
     return checksum;
 exit:
