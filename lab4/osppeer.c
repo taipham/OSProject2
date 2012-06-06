@@ -575,8 +575,10 @@ char * create_checksum(task_t *tracker_task, char* filename) {
     // check the lenght of the sting is valid
 
 	unsigned int len = strlen(checksum);
-	if (len > (MD5_TEXT_DIGEST_SIZE + 1))
+	if (len > MD5_TEXT_DIGEST_SIZE) {
+        free(checksum);
         goto exit;
+    }
     return checksum;
 exit:
     return NULL;
@@ -708,6 +710,8 @@ static void task_download(task_t *t, task_t *tracker_task)
         if (server_checksum == NULL) {
             message("Checksum check rejected because it cannot get server's checksum response");
         } else {
+            free(server_checksum);
+            free(client_checksum);
             message("* Checksum check passed for file: %s\n", t->disk_filename);
         }
 #endif
